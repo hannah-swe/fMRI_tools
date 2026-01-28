@@ -7,10 +7,11 @@ import seaborn as sns
 
 # Config
 base_dir = Path("/data_wgs04/ag-sensomotorik/PPPD/workdir_precuneus/derivatives/halfpipe")
-PIPELINE_PATTERNS = {
+pipeline_patterns = {
     "noscrub": "setting-image",
     "scrub": "setting-imageScrubSetting",
 }
+participants_path = Path("/data_wgs04/ag-sensomotorik/PPPD/BIDS_run1/participants.tsv")
 
 # Function to get the mean of a nifti image
 def mean_in_mask(img_path, mask_path=None):
@@ -63,7 +64,7 @@ for sub_dir in sorted(base_dir.glob("sub-*")):
         continue
 
     # Loop over all defined pipelines
-    for pipeline, pat in PIPELINE_PATTERNS.items():
+    for pipeline, pat in pipeline_patterns.items():
         confounds_tsv = func_dir / f"{sub}_task-rest_run-01_{pat}_desc-confounds_regressors.tsv"
         brain_mask = func_dir / f"{sub}_task-rest_run-01_{pat}_desc-brain_mask.nii.gz"
 
@@ -84,4 +85,12 @@ for sub_dir in sorted(base_dir.glob("sub-*")):
 
 # Get complete dataframe
 qc_df = pd.DataFrame(rows).sort_values(["sub", "pipeline"])
+participants_df = pd.read_csv(participants_path, sep="\t")
+qc_df = qc_df.merge(
+    participants_df[["participant_id", "group"]],
+    left_on="sub",
+    right_on="participant_id",
+    how="left"
+)
+qc_df = qc_df.drop(columns=["participant_id"])
 
