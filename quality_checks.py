@@ -94,3 +94,56 @@ qc_df = qc_df.merge(
 )
 qc_df = qc_df.drop(columns=["participant_id"])
 
+# QC Plots:
+# 1. subject-wise FD over scan
+def plot_fd_over_tr(confounds_tsv, sub, fd_threshold=None):
+    conf = pd.read_csv(confounds_tsv, sep="\t")
+    fd = conf["framewise_displacement"].fillna(0)
+
+    plt.figure(figsize=(5, 4))
+    plt.plot(fd.values, linewidth=1)
+    plt.xlabel("TR")
+    plt.ylabel("Framewise Displacement")
+    plt.title(f"{sub} – Framewise Displacement")
+
+    if fd_threshold is not None:
+        plt.axhline(fd_threshold, color="red", linestyle="--", linewidth=1,
+                    label=f"FD threshold = {fd_threshold}")
+        plt.legend()
+
+    plt.tight_layout()
+    plt.show()
+
+for sub_dir in sorted(base_dir.glob("sub-*")):
+    sub = sub_dir.name
+    func_dir = sub_dir / "func"
+
+    confounds_tsv = func_dir / f"{sub}_task-rest_run-01_setting-image_desc-confounds_regressors.tsv"
+    if not confounds_tsv.exists():
+        continue
+
+    plot_fd_over_tr(
+        confounds_tsv=confounds_tsv,
+        sub=sub,
+        fd_threshold=0.5
+    )
+
+# 2. remaining TRs in all pipelines
+sns.boxplot(
+    data=qc_df,
+    x="pipeline",
+    y="remaining_tr"
+)
+plt.ylabel("Remaining TRs")
+plt.show()
+
+# 3. percentage of scrubbed volumes on mean FD (only scrub pipeline)
+sns.scatterplot(
+    data=qc_df[qc_df.pipeline == "scrub"],
+    x="mean_fd",
+    y="pct_scrub"
+)
+plt.xlabel("Mean FD")
+plt.ylabel("% scrubbed volumes")
+plt.show()
+
