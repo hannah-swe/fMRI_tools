@@ -4,6 +4,8 @@ import nibabel as nib
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+from scipy.stats import pearsonr
+import statsmodels.formula.api as smf
 
 # Config / Paths
 base_dir = Path("/data_wgs04/ag-sensomotorik/PPPD/workdir_precuneus/derivatives/halfpipe")
@@ -172,3 +174,118 @@ print(qc_df["fd_mean_halfpipe"].isna().sum(), "rows without fd_mean_halfpipe")
 
 # 3) any missing fc values?
 print(qc_df["fc_dmn_mean"].isna().sum(), "rows without fc_dmn_mean")
+
+
+# QC Plots
+# 1. subject-wise FD over scan
+def plot_fd_over_tr(confounds_tsv, sub, fd_threshold=None):
+    conf = pd.read_csv(confounds_tsv, sep="\t")
+    fd = conf["framewise_displacement"].fillna(0)
+
+    plt.figure(figsize=(4, 4))
+    plt.plot(fd.values, linewidth=1)
+    plt.xlabel("TR")
+    plt.ylabel("Framewise Displacement")
+    plt.title(f"{sub} run-01")
+    sns.despine()
+
+    if fd_threshold is not None:
+        plt.axhline(fd_threshold, color="red", linestyle="--", linewidth=1,
+                    label=f"FD threshold = {fd_threshold}")
+        plt.legend()
+
+    plt.tight_layout()
+    plt.show()
+
+for sub_dir in sorted(base_dir.glob("sub-*")):
+    sub = sub_dir.name
+    func_dir = sub_dir / "func"
+
+    confounds_tsv = func_dir / f"{sub}_task-rest_run-01_setting-image_desc-confounds_regressors.tsv"
+    if not confounds_tsv.exists():
+        continue
+
+    plot_fd_over_tr(
+        confounds_tsv=confounds_tsv,
+        sub=sub,
+        fd_threshold=None
+    )
+
+# 2. percentage of scrubbed volumes on mean FD (only scrub pipeline)
+sns.scatterplot(
+    data=qc_df[qc_df.pipeline == "scrub"],
+    x="mean_fd",
+    y="pct_scrub"
+)
+plt.xlabel("Mean FD")
+plt.ylabel("% scrubbed volumes")
+sns.despine()
+plt.show()
+
+# 3. QC-FC plot: correlation of subject-wise motion and pipeline-wise functional connectivity in dmn
+# quick stats
+# pearson's r
+for pipeline in ["noscrub", "scrub"]:
+    dfp = qc_df.query("pipeline == @pipeline").dropna(
+        subset=["fc_dmn_mean", "fd_mean_halfpipe"]
+    )
+    r, p = pearsonr(dfp["fd_mean_halfpipe"], dfp["fc_dmn_mean"])
+    print(f"{pipeline}: r = {r:.3f}, p = {p:.3g}")
+# linear regression
+df = qc_df.dropna(subset=["fc_dmn_mean", "fd_mean_halfpipe"])
+model = smf.ols(
+    "fc_dmn_mean ~ fd_mean_halfpipe * pipeline + group",
+    data=df
+).fit()
+print(model.summary())
+
+plt.figure(figsize=(8, 6))
+g = sns.lmplot(
+    data=qc_df,
+    x="fd_mean_halfpipe",
+    y="fc_dmn_mean",
+    col="pipeline",
+    hue="group",
+    # aspect=1,
+    # scatter_kws={"alpha": 0.7, "s": 50},
+    # line_kws={"linewidth": 2},
+    legend=False,
+    ci=None
+)
+g.set_axis_labels("Mean FD", "DMN connectivity")
+plt.show()
+
+# 4. Mean FD in different pipelines
+sns.boxplot(
+    data=qc_df,
+    x="pipeline",
+    y="mean_fd"
+)
+sns.lineplot(
+    data=qc_df,
+    x="pipeline",
+    y="mean_fd",
+    units="sub",
+    estimator=None,
+    legend=False,
+    color="dimgrey",
+    linestyle="--",
+    linewidth=1,
+    alpha=1
+)
+sns.despine()
+plt.xlabel("")
+plt.ylabel("Mean Framewise Displacement")
+plt.show()
+
+# 4. Lineplot
+sns.lineplot(
+    data=qc_df,
+    x="pipeline",
+    y="remaining_tr",
+    hue="sub",
+    legend=False
+)
+sns.despine()
+plt.ylabel("Remaining TRs")
+plt.show()
