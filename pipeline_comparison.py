@@ -270,9 +270,34 @@ g = sns.lmplot(
     legend=False,
     palette=palette
 )
-g.set_axis_labels("Mean FD", "DMN connectivity")
+g.set_axis_labels("Framewise Displacement", "DMN Connectivity")
 plt.tight_layout()
 plt.savefig("/home/hannahschewe/Documents/PPPD_analysis/quality_check_plots/fc_dmn_on_mean_fd.png")
+plt.show()
+
+sns.boxplot(
+    data=qc_df,
+    x="pipeline",
+    y="fc_dmn_mean",
+    palette=palette,
+    hue="pipeline"
+)
+sns.lineplot(
+    data=qc_df,
+    x="pipeline",
+    y="fc_dmn_mean",
+    units="sub",
+    estimator=None,
+    legend=False,
+    color="black",
+    linewidth=1.2,
+    alpha=0.4
+)
+sns.despine()
+plt.tight_layout()
+plt.xlabel("")
+plt.ylabel("DMN Connectivity")
+plt.savefig("/home/hannahschewe/Documents/PPPD_analysis/quality_check_plots/mean_fc_dmn_on_pipelines.png")
 plt.show()
 
 # 4. Mean FD in different pipelines
