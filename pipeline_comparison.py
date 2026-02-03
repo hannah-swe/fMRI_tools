@@ -20,8 +20,15 @@ participants_path = Path("/data_wgs04/ag-sensomotorik/PPPD/data/part2_pre/partic
 reportvals_path = Path("/data_wgs04/ag-sensomotorik/PPPD/analysis/part2_pre/reports/reportvals.txt")
 subs_to_drop = ["sub-118", "sub-124", "sub-126", "sub-164"]
 
-# DMN mask (same space as HALFpipe statmaps)
+# DMN mask and Harvard-Oxford ROI masks (same space as HALFpipe statmaps)
 dmn_mask = Path("/data_wgs04/ag-sensomotorik/PPPD/masks/dmn_mask_resampled.nii.gz")
+roi_dir = Path("/data_wgs04/ag-sensomotorik/PPPD/masks/harvard_oxford_rois_tf")
+roi_masks = {
+    "fc_precuneous": roi_dir / "roi_precuneous.nii.gz",
+    "fc_angular_L":  roi_dir / "roi_angular_L.nii.gz",
+    "fc_angular_R":  roi_dir / "roi_angular_R.nii.gz",
+    "fc_mpfc":       roi_dir / "roi_mpfc.nii.gz",
+}
 
 
 # Helper functions
@@ -143,25 +150,26 @@ qc_df = qc_df.merge(
 qc_df = qc_df.merge(reportvals_qc, on="sub", how="left")
 
 
-# Build FC table (DMN mean from seed-based statmaps) and merge into qc_df
+# Build FC table (DMN mean + ROI means from seed-based statmaps)
 fc_rows = []
-if not dmn_mask.exists():
-    raise FileNotFoundError(f"DMN mask not found: {dmn_mask}")
-
 for sub_dir in sorted(base_dir.glob("sub-*")):
     sub = sub_dir.name
     for variant in ["no_scrub", "scrub"]:
         p = statmap_path(sub_dir, sub, variant)
         if not p.exists():
-            # It's fine to skip missing maps (e.g., subject failed for a feature)
             continue
-        fc_rows.append(
-            {
-                "sub": sub,
-                "pipeline": variant,
-                "fc_dmn_mean": mean_in_mask_nii(p, dmn_mask),
-            }
-        )
+
+        row = {
+            "sub": sub,
+            "pipeline": variant,
+            "fc_dmn_mean": mean_in_mask_nii(p, dmn_mask),
+        }
+
+        # add ROI-specific FC
+        for col, mask_path in roi_masks.items():
+            row[col] = mean_in_mask_nii(p, mask_path)
+
+        fc_rows.append(row)
 
 fc_df = pd.DataFrame(fc_rows)
 
