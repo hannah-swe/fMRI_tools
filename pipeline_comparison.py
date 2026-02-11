@@ -8,7 +8,7 @@ from scipy.stats import pearsonr
 import statsmodels.formula.api as smf
 
 # Config / Paths
-base_dir = Path("/data_wgs04/ag-sensomotorik/PPPD/analysis/part2_pre/derivatives/halfpipe")
+base_dir = Path("/data_wgs04/ag-sensomotorik/PPPD/analysis/part2_pre_old/derivatives/halfpipe")
 
 pipeline_patterns = {
     "no_scrub": "setting-imageNoscrub",
@@ -18,7 +18,7 @@ palette = {"no_scrub": "darkred", "scrub": "navy"}
 
 participants_path = Path("/data_wgs04/ag-sensomotorik/PPPD/data/part2_pre/participants.tsv")
 reportvals_path = Path("/data_wgs04/ag-sensomotorik/PPPD/analysis/part2_pre/reports/reportvals.txt")
-subs_to_drop = ["sub-118", "sub-124", "sub-126", "sub-164"]
+subs_to_drop = ["sub-118", "sub-124", "sub-126", "sub-134", "sub-140", "sub-144", "sub-164"]
 
 # DMN mask and Harvard-Oxford ROI masks (same space as HALFpipe statmaps)
 dmn_mask = Path("/data_wgs04/ag-sensomotorik/PPPD/masks/dmn_mask_resampled.nii.gz")
@@ -189,40 +189,48 @@ print(qc_df["fc_dmn_mean"].isna().sum(), "rows without fc_dmn_mean")
 
 
 # QC Plots
-# 1. subject-wise FD over scan
+# 1. subject-wise FD over scan (framewise displacement from fMRIPrep derivatives
 def plot_fd_over_tr(confounds_tsv, sub, fd_threshold=None):
     conf = pd.read_csv(confounds_tsv, sep="\t")
+
     fd = conf["framewise_displacement"].fillna(0)
 
     plt.figure(figsize=(4, 4))
-    plt.plot(fd.values, linewidth=1)
+    plt.plot(fd.values, linewidth=0.8)
     plt.xlabel("TR")
     plt.ylabel("Framewise Displacement")
-    plt.title(f"{sub} run-01")
+    plt.title(f"{sub} run-01".strip())
     sns.despine()
 
     if fd_threshold is not None:
         plt.axhline(fd_threshold, color="red", linestyle="--", linewidth=1)
 
-    ymax = max(10, fd.max())
+    ymax = max(1, float(fd.max()))
     plt.ylim(0, ymax)
 
     plt.tight_layout()
     plt.show()
 
-for sub_dir in sorted(base_dir.glob("sub-*")):
+fmriprep_dir = Path("/data_wgs04/ag-sensomotorik/PPPD/analysis/part2_pre_old/derivatives/fmriprep")
+
+for sub_dir in sorted(fmriprep_dir.glob("sub-*")):
     sub = sub_dir.name
     func_dir = sub_dir / "func"
 
-    confounds_tsv = func_dir / f"{sub}_task-rest_run-01_setting-imageNoscrub_desc-confounds_regressors.tsv"
-    if not confounds_tsv.exists():
+    confounds = sorted(
+        func_dir.glob(f"{sub}_task-rest_run-01_desc-confounds_timeseries.tsv")
+    )
+    if not confounds:
         continue
+
+    confounds_tsv = confounds[0]
 
     plot_fd_over_tr(
         confounds_tsv=confounds_tsv,
         sub=sub,
-        fd_threshold=5
+        fd_threshold=0.5
     )
+
 
 # 2. percentage of scrubbed volumes on mean FD (only scrub pipeline)
 df_no = qc_df.loc[
