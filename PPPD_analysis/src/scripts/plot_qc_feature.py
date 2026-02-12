@@ -12,7 +12,7 @@ from pppd.io.halfpipe import find_confounds_timeseries
 # -----------------------------
 # Config (edit here)
 # -----------------------------
-FEATURE = "falff"  # "falff" oder "seedfc"
+FEATURE = "seedfc"  # "falff" oder "seedfc"
 RUN = "run-01"
 FD_THRESHOLD = 0.5
 
@@ -82,10 +82,10 @@ if DO_GENERAL:
     plt.ylabel("% scrubbed volumes")
     sns.despine()
     plt.tight_layout()
-    plt.savefig(OUT_DIR_GENERAL / "scrubbed_volumes_on_mean_fd.png", dpi=150)
+    plt.savefig(OUT_DIR_GENERAL / "scrubbed_volumes_on_mean_fd.png", dpi=400)
     plt.show()
 
-    # Plot 4: Mean FD across pipelines
+    # Plot 3: Mean FD across pipelines
     plt.figure(figsize=(5, 5))
     sns.boxplot(
         data=qc,
@@ -112,17 +112,17 @@ if DO_GENERAL:
     plt.tight_layout()
     plt.xlabel("")
     plt.ylabel("Mean Framewise Displacement")
-    plt.savefig(OUT_DIR_GENERAL / "mean_fd_on_pipelines.png", dpi=150)
+    plt.savefig(OUT_DIR_GENERAL / "mean_fd_on_pipelines.png", dpi=400)
     plt.show()
 
-    # Plot 5: Remaining TRs
+    # Plot 4: Remaining TRs
     plt.figure(figsize=(5, 5))
     sns.lineplot( data=qc, x="pipeline", y="remaining_tr", hue="sub", legend=False)
     sns.despine()
     plt.xlabel("")
     plt.ylabel("Remaining TRs")
     plt.tight_layout()
-    plt.savefig(OUT_DIR_GENERAL / "remaining_tr_on_pipelines.png", dpi=150)
+    plt.savefig(OUT_DIR_GENERAL / "remaining_tr_on_pipelines.png", dpi=400)
     plt.show()
 
     print("\n[GENERAL] Plots saved to:", OUT_DIR_GENERAL)
@@ -140,78 +140,101 @@ if DO_FEATURE:
         )
 
     df = pd.read_csv(FEATURE_TABLE)
-    outcome_dmn = f"{FEATURE}_dmn_mean"
-    if outcome_dmn not in df.columns:
-        raise KeyError(f"Missing column '{outcome_dmn}' in {FEATURE_TABLE}")
 
     print("\n[FEATURE] Loaded:", FEATURE_TABLE)
-    print("[FEATURE] Outcome column:", outcome_dmn)
     print("[FEATURE] Rows:", len(df), "| Unique subs:", df["sub"].nunique())
 
-    # Some stats (correlations and linear regression)
-    print("\n=== QC–Outcome correlations (fd_mean_halfpipe vs DMN outcome) ===")
-    for pipeline in ["no_scrub", "scrub"]:
-        dfp = df.query("pipeline == @pipeline").dropna(subset=[outcome_dmn, "fd_mean_halfpipe"])
-        if len(dfp) < 3:
-            print(f"{pipeline}: too few rows after NA drop")
-            continue
-        r, p = pearsonr(dfp["fd_mean_halfpipe"], dfp[outcome_dmn])
-        print(f"{pipeline}: r = {r:.3f}, p = {p:.3g}, n = {len(dfp)}")
+    # Collect outcomes: DMN + all ROI mean columns for this feature
+    outcome_cols = [f"{FEATURE}_dmn_mean"]
+    roi_cols = [c for c in df.columns if c.startswith(f"{FEATURE}_roi_")]
+    outcome_cols += roi_cols
 
-    df_lm = df.dropna(subset=[outcome_dmn, "fd_mean_halfpipe", "group"]).copy()
-    model = smf.ols(
-        f"{outcome_dmn} ~ fd_mean_halfpipe * pipeline + group",
-        data=df_lm
-    ).fit()
-    print("\n=== Linear model summary ===")
-    print(model.summary())
+    missing = [c for c in outcome_cols if c not in df.columns]
+    if missing:
+        raise KeyError(f"Missing expected outcome columns: {missing}")
 
-    # Plot 1: QC–Outcome (Pearson + LM + lmplot + box/line)
-    g = sns.lmplot(
-        data=df,
-        x="fd_mean_halfpipe",
-        y=outcome_dmn,
-        col="pipeline",
-        hue="pipeline",
-        ci=95,
-        legend=False,
-        palette=palette,
-        height=5,
-        aspect=1
-    )
-    g.set_axis_labels("Mean Framewise Displacement", f"DMN {FEATURE.upper()}")
-    plt.tight_layout()
-    plt.savefig(OUT_DIR_FEATURE / f"{FEATURE}_dmn_on_mean_fd.png", dpi=150)
-    plt.show()
+    print("[FEATURE] Outcomes to plot:", outcome_cols)
 
-    # Plot 2:
-    plt.figure(figsize=(5, 5))
-    sns.boxplot(
-        data=df,
-        x="pipeline",
-        y=outcome_dmn,
-        palette=palette,
-        hue="pipeline",
-        dodge=False,
-        linewidth=1,
-        linecolor="black",
+    # Helper to run the same set of plots for one outcome column
+    def qc_outcome_plots(outcome_col: str, out_prefix: str) -> None:
+        # correlations
+        print(f"\n=== QC–Outcome: {outcome_col} ===")
+        for pipeline in ["no_scrub", "scrub"]:
+            dfp = df.query("pipeline == @pipeline").dropna(subset=[outcome_col, "fd_mean_halfpipe"])
+            if len(dfp) < 3:
+                print(f"{pipeline}: too few rows after NA drop")
+                continue
+            r, p = pearsonr(dfp["fd_mean_halfpipe"], dfp[outcome_col])
+            print(f"{pipeline}: r = {r:.3f}, p = {p:.3g}, n = {len(dfp)}")
+
+        # linear model
+        df_lm = df.dropna(subset=[outcome_col, "fd_mean_halfpipe", "group"]).copy()
+        model = smf.ols(
+            f"{outcome_col} ~ fd_mean_halfpipe * pipeline + group",
+            data=df_lm
+        ).fit()
+        print(model.summary())
+
+        # Plot 1: FD vs outcome per pipeline
+        g = sns.lmplot(
+            data=df,
+            x="fd_mean_halfpipe",
+            y=outcome_col,
+            col="pipeline",
+            hue="pipeline",
+            ci=95,
+            legend=False,
+            palette=palette,
+            height=5,
+            aspect=1
+        )
+        g.set_axis_labels("Mean Framewise Displacement", outcome_col)
+        plt.tight_layout()
+        plt.savefig(OUT_DIR_FEATURE / f"{out_prefix}_on_mean_fd.png", dpi=400)
+        plt.show()
+
+        # Plot2: Outcome across pipelines: boxplot + paired lines
+        plt.figure(figsize=(5, 5))
+        sns.boxplot(
+            data=df,
+            x="pipeline",
+            y=outcome_col,
+            palette=palette,
+            hue="pipeline",
+            dodge=False,
+            linecolor="black"
+        )
+        sns.lineplot(
+            data=df,
+            x="pipeline",
+            y=outcome_col,
+            units="sub",
+            estimator=None,
+            legend=False,
+            color="black",
+            alpha=0.4
+        )
+        sns.despine()
+        plt.tight_layout()
+        plt.xlabel("")
+        plt.ylabel(outcome_col)
+        plt.savefig(OUT_DIR_FEATURE / f"{out_prefix}_on_pipelines.png", dpi=400)
+        plt.show()
+
+    # Run for DMN
+    qc_outcome_plots(
+        outcome_col=f"{FEATURE}_dmn_mean",
+        out_prefix=f"{FEATURE}_dmn"
     )
-    sns.lineplot(
-        data=df,
-        x="pipeline",
-        y=outcome_dmn,
-        units="sub",
-        estimator=None,
-        legend=False,
-        color="black",
-        linewidth=1,
-        alpha=0.5
-    )
-    sns.despine()
-    plt.tight_layout()
-    plt.xlabel("")
-    plt.ylabel(f"DMN {FEATURE.upper()}")
-    plt.savefig(OUT_DIR_FEATURE / f"mean_{FEATURE}_dmn_on_pipelines.png", dpi=150)
-    plt.show()
+
+    # Run for each ROI
+    for c in roi_cols:
+        # shorter file name prefix
+        roi_name = c.replace(f"{FEATURE}_roi_", "")
+        qc_outcome_plots(
+            outcome_col=c,
+            out_prefix=f"{FEATURE}_roi_{roi_name}"
+        )
 
     print("\n[FEATURE] Plots saved to:", OUT_DIR_FEATURE)
+
