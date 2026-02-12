@@ -3,7 +3,7 @@ from pathlib import Path
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from scipy.stats import pearsonr
+from scipy.stats import pearsonr, ttest_rel
 import statsmodels.formula.api as smf
 from pppd.config.paths import fmriprep_dir
 from pppd.config.pipelines import palette
@@ -155,9 +155,31 @@ if DO_FEATURE:
 
     print("[FEATURE] Outcomes to plot:", outcome_cols)
 
+    from scipy.stats import ttest_rel  # zusätzlich zu pearsonr
+
+
+    def p_to_stars(p: float) -> str:
+        if p < 0.001:
+            return "***"
+        if p < 0.01:
+            return "**"
+        if p < 0.05:
+            return "*"
+        return "n.s."
+
+
+    def add_sig_bracket(ax, x1: float, x2: float, y: float, h: float, text: str):
+        """
+        Draw significance bracket between x1 and x2 at height y (data coords).
+        h is the bracket height (data coords).
+        """
+        ax.plot([x1, x1, x2, x2], [y, y + h, y + h, y], lw=1, c="black")
+        ax.text((x1 + x2) / 2, y + h, text, ha="center", va="bottom", color="black")
+
+
     # Helper to run the same set of plots for one outcome column
     def qc_outcome_plots(outcome_col: str, out_prefix: str) -> None:
-        # correlations
+        # correlations (bleibt wie gehabt)
         print(f"\n=== QC–Outcome: {outcome_col} ===")
         for pipeline in ["no_scrub", "scrub"]:
             dfp = df.query("pipeline == @pipeline").dropna(subset=[outcome_col, "fd_mean_halfpipe"])
@@ -167,15 +189,22 @@ if DO_FEATURE:
             r, p = pearsonr(dfp["fd_mean_halfpipe"], dfp[outcome_col])
             print(f"{pipeline}: r = {r:.3f}, p = {p:.3g}, n = {len(dfp)}")
 
-        # linear model
-        df_lm = df.dropna(subset=[outcome_col, "fd_mean_halfpipe", "group"]).copy()
-        model = smf.ols(
-            f"{outcome_col} ~ fd_mean_halfpipe * pipeline + group",
-            data=df_lm
-        ).fit()
-        print(model.summary())
+        # ---- NEW: paired t-test scrub vs no_scrub ----
+        wide = (
+            df.pivot(index="sub", columns="pipeline", values=outcome_col)
+            .dropna(subset=["no_scrub", "scrub"])
+            .copy()
+        )
+        if len(wide) < 3:
+            print(f"Paired t-test: too few paired subjects for {outcome_col} (n={len(wide)})")
+            p_t = float("nan")
+            stars = "n/a"
+        else:
+            t_stat, p_t = ttest_rel(wide["scrub"], wide["no_scrub"])
+            stars = p_to_stars(p_t)
+            print(f"Paired t-test (scrub vs no_scrub): t = {t_stat:.3f}, p = {p_t:.3g}, n = {len(wide)}")
 
-        # Plot 1: FD vs outcome per pipeline
+        # Plot 1: FD vs outcome per pipeline (bleibt)
         g = sns.lmplot(
             data=df,
             x="fd_mean_halfpipe",
@@ -193,9 +222,9 @@ if DO_FEATURE:
         plt.savefig(OUT_DIR_FEATURE / f"{out_prefix}_on_mean_fd.png", dpi=400)
         plt.show()
 
-        # Plot2: Outcome across pipelines: boxplot + paired lines
+        # Plot 2: Outcome across pipelines: boxplot + paired lines + significance stars
         plt.figure(figsize=(5, 5))
-        sns.boxplot(
+        ax = sns.boxplot(
             data=df,
             x="pipeline",
             y=outcome_col,
@@ -214,12 +243,27 @@ if DO_FEATURE:
             color="black",
             alpha=0.4
         )
+
+        # ---- NEW: add stars to boxplot ----
+        # bracket from category 0 (no_scrub) to 1 (scrub)
+        y_max = df[outcome_col].max()
+        y_min = df[outcome_col].min()
+        y_range = (y_max - y_min) if pd.notna(y_max) and pd.notna(y_min) else 1.0
+
+        y = y_max + 0.05 * y_range
+        h = 0.02 * y_range
+        if pd.notna(p_t):
+            add_sig_bracket(ax, 0, 1, y=y, h=h, text=stars)
+
         sns.despine()
         plt.tight_layout()
         plt.xlabel("")
         plt.ylabel(outcome_col)
+
+        # optional: p-value in filename (wenn du willst)
         plt.savefig(OUT_DIR_FEATURE / f"{out_prefix}_on_pipelines.png", dpi=400)
         plt.show()
+
 
     # Run for DMN
     qc_outcome_plots(
