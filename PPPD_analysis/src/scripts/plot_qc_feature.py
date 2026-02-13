@@ -9,10 +9,9 @@ from pppd.config.paths import fmriprep_dir
 from pppd.config.pipelines import palette
 from pppd.io.halfpipe import find_confounds_timeseries
 
-# -----------------------------
-# Config (edit here)
-# -----------------------------
-FEATURE = "seedfc"  # "falff" oder "seedfc"
+
+# CONFIG:
+FEATURE = "falff"  # "falff" oder "seedfc"
 RUN = "run-01"
 FD_THRESHOLD = 0.5
 
@@ -27,6 +26,9 @@ OUT_DIR_FEATURE = Path.cwd() / "outputs" / "plots" / FEATURE
 OUT_DIR_GENERAL.mkdir(parents=True, exist_ok=True)
 OUT_DIR_FEATURE.mkdir(parents=True, exist_ok=True)
 
+# Plot styles
+sns.set_context("talk")
+sns.set_style("ticks")
 
 # -----------------------------
 # Helpers: FD-over-TR (only show, don't save)
@@ -76,7 +78,7 @@ if DO_GENERAL:
 
     # Plot 2: % scrubbed volumes on mean FD
     plot_df = qc.loc[qc["pipeline"] == "scrub", ["sub", "fd_mean_halfpipe", "pct_scrub"]]
-    plt.figure(figsize=(6, 5))
+    plt.figure(figsize=(8, 7))
     sns.regplot( data=plot_df, x="fd_mean_halfpipe", y="pct_scrub", color="black")
     plt.xlabel("Mean FD")
     plt.ylabel("% scrubbed volumes")
@@ -86,7 +88,7 @@ if DO_GENERAL:
     plt.show()
 
     # Plot 3: Mean FD across pipelines
-    plt.figure(figsize=(5, 5))
+    plt.figure(figsize=(7, 7))
     sns.boxplot(
         data=qc,
         x="pipeline",
@@ -94,8 +96,9 @@ if DO_GENERAL:
         palette=palette,
         hue="pipeline",
         dodge=False,
-        linewidth=1,
+        linewidth=1.5,
         linecolor="black",
+        showcaps=False,
     )
     sns.lineplot(
         data=qc,
@@ -105,8 +108,8 @@ if DO_GENERAL:
         estimator=None,
         legend=False,
         color="black",
-        linewidth=1,
-        alpha=0.5
+        linewidth=1.5,
+        alpha=0.4
     )
     sns.despine()
     plt.tight_layout()
@@ -116,7 +119,7 @@ if DO_GENERAL:
     plt.show()
 
     # Plot 4: Remaining TRs
-    plt.figure(figsize=(5, 5))
+    plt.figure(figsize=(7, 7))
     sns.lineplot( data=qc, x="pipeline", y="remaining_tr", hue="sub", legend=False)
     sns.despine()
     plt.xlabel("")
@@ -173,7 +176,7 @@ if DO_FEATURE:
         Draw significance bracket between x1 and x2 at height y (data coords).
         h is the bracket height (data coords).
         """
-        ax.plot([x1, x1, x2, x2], [y, y + h, y + h, y], lw=1, c="black")
+        ax.plot([x1, x1, x2, x2], [y, y + h, y + h, y], lw=1.5, c="black")
         ax.text((x1 + x2) / 2, y + h, text, ha="center", va="bottom", color="black")
 
 
@@ -190,11 +193,8 @@ if DO_FEATURE:
             print(f"{pipeline}: r = {r:.3f}, p = {p:.3g}, n = {len(dfp)}")
 
         # ---- NEW: paired t-test scrub vs no_scrub ----
-        wide = (
-            df.pivot(index="sub", columns="pipeline", values=outcome_col)
-            .dropna(subset=["no_scrub", "scrub"])
-            .copy()
-        )
+        wide = (df.pivot(index="sub", columns="pipeline", values=outcome_col).
+                dropna(subset=["no_scrub", "scrub"]).copy())
         if len(wide) < 3:
             print(f"Paired t-test: too few paired subjects for {outcome_col} (n={len(wide)})")
             p_t = float("nan")
@@ -205,6 +205,7 @@ if DO_FEATURE:
             print(f"Paired t-test (scrub vs no_scrub): t = {t_stat:.3f}, p = {p_t:.3g}, n = {len(wide)}")
 
         # Plot 1: FD vs outcome per pipeline (bleibt)
+        plt.figure(figsize=(12, 7))
         g = sns.lmplot(
             data=df,
             x="fd_mean_halfpipe",
@@ -214,7 +215,7 @@ if DO_FEATURE:
             ci=95,
             legend=False,
             palette=palette,
-            height=5,
+            height=7,
             aspect=1
         )
         g.set_axis_labels("Mean Framewise Displacement", outcome_col)
@@ -223,7 +224,7 @@ if DO_FEATURE:
         plt.show()
 
         # Plot 2: Outcome across pipelines: boxplot + paired lines + significance stars
-        plt.figure(figsize=(5, 5))
+        plt.figure(figsize=(7, 7))
         ax = sns.boxplot(
             data=df,
             x="pipeline",
@@ -231,7 +232,9 @@ if DO_FEATURE:
             palette=palette,
             hue="pipeline",
             dodge=False,
-            linecolor="black"
+            linecolor="black",
+            linewidth=1.5,
+            showcaps=False,
         )
         sns.lineplot(
             data=df,
@@ -241,6 +244,7 @@ if DO_FEATURE:
             estimator=None,
             legend=False,
             color="black",
+            linewidth=1.5,
             alpha=0.4
         )
 
