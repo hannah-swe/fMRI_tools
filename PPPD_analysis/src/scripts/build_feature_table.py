@@ -1,11 +1,18 @@
 from __future__ import annotations
 from pathlib import Path
 import pandas as pd
-from pppd.config.paths import base_dir_halfpipe_seedfc, base_dir_halfpipe_falff
+from pppd.config.paths import base_dir_halfpipe_seedfc, base_dir_halfpipe_falff, fmriprep_dir
 from pppd.config.masks import dmn_mask, roi_masks
-from pppd.metrics.nifti import mean_in_mask_nii
+from pppd.metrics.nifti import mean_in_mask_nii, weighted_mean_in_probseg
 from pppd.metrics.roi import extract_roi_means
 from pppd.io.features import seedfc_map_path, falff_map_path
+from pppd.io.fmriprep import gm_probseg_mni, wm_probseg_mni, csf_probseg_mni
+
+
+# CONFIG:
+TISSUE_THRESHOLD = 0.2   # Threshold to use for probabilistic GM mask
+USE_WEIGHTED = False     # False -> thresholded mask; True -> probabilistic weighted mean
+threshold = None if USE_WEIGHTED else TISSUE_THRESHOLD
 
 
 def build_feature_rows(
@@ -40,6 +47,25 @@ def build_feature_rows(
                 "pipeline": pipeline,
                 dmn_col: mean_in_mask_nii(img_path, dmn_mask),
             }
+
+            # Tissue-specific global means (GM/WM/CSF) from fMRIPrep derivatives
+            fmri_sub_dir = fmriprep_dir / sub
+
+            gm_path = gm_probseg_mni(fmri_sub_dir, sub)
+            if gm_path.exists():
+                row[f"{feature}_gm_mean"] = weighted_mean_in_probseg(img_path, gm_path, threshold=threshold)
+            else:
+                row[f"{feature}_gm_mean"] = float("nan")
+
+            wm_path = wm_probseg_mni(fmri_sub_dir, sub)
+            row[f"{feature}_wm_mean"] = weighted_mean_in_probseg(img_path, wm_path,
+                                                                 threshold=threshold) if wm_path.exists() else float(
+                "nan")
+
+            csf_path = csf_probseg_mni(fmri_sub_dir, sub)
+            row[f"{feature}_csf_mean"] = weighted_mean_in_probseg(img_path, csf_path,
+                                                                  threshold=threshold) if csf_path.exists() else float(
+                "nan")
 
             # ROI means (re-using your Harvard-Oxford masks)
             roi_means = extract_roi_means(img_path, roi_masks)
