@@ -1,17 +1,18 @@
 name: dataenv
 channels:
+  - conda-forge
   - defaults
+channel_priority: strict
 dependencies:
-  - python=3.12.12
+  - python=3.12
   - numpy
   - scipy
   - scikit-learn
-  - matplotlib
-  - statsmodels
-  - ipykernel
-  - jupyterlab
-  - seaborn
   - pandas
+  - matplotlib
+  - seaborn
+  - statsmodels
   - nibabel
   - nilearn
-prefix: /home/hannahschewe/.conda/envs/dataenv
+  - ipykernel
+  - jupyterlab
