@@ -2,14 +2,16 @@ name: dataenv
 channels:
   - defaults
 dependencies:
-  - matplotlib
+  - python=3.12.12
   - numpy
-  - pandas
-  - python==3.12.12
-  - scikit-learn
   - scipy
-  - seaborn
+  - scikit-learn
+  - matplotlib
   - statsmodels
   - ipykernel
   - jupyterlab
-prefix: C:\Users\Schewe\AppData\Local\anaconda3\envs\dataenv
+  - seaborn
+  - pandas
+  - nibabel
+  - nilearn
+prefix: /home/hannahschewe/.conda/envs/dataenv
