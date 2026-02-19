@@ -54,7 +54,7 @@ for metric, ylabel, fname in metrics:
     print(f"t = {t_stat:.3f}, p = {p_val:.3g}, n = {len(wide)}")
 
     # Plot 1: global fALFF (GM, WM, CSF) in different pipelines
-    plt.figure(figsize=(7, 7))
+    plt.figure(figsize=(7, 9))
     ax = sns.boxplot(
         data=df,
         x="pipeline",
@@ -75,11 +75,11 @@ for metric, ylabel, fname in metrics:
         linewidth=1.5,
         alpha=0.4,
     )
-    # significance bracket
-    y_max = df[metric].max()
-    y_min = df[metric].min()
-    y_range = (y_max - y_min) if pd.notna(y_max) and pd.notna(y_min) else 1.0
-    y = y_max + 0.06 * y_range
+    # set y-axis limits and add significance bracket
+    ymin, ymax = -0.6, 0.8
+    ax.set_ylim(ymin, ymax)
+    y_range = ymax - ymin
+    y = ymax - 0.05 * y_range
     h = 0.02 * y_range
     add_sig_bracket(ax, 0, 1, y=y, h=h, text=stars)
 
