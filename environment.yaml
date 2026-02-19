@@ -11,4 +11,5 @@ dependencies:
   - scikit-learn
   - scipy
   - seaborn
+  - statsmodels
 prefix: C:\Users\Schewe\AppData\Local\anaconda3\envs\dataenv
