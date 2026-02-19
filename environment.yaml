@@ -1,0 +1,14 @@
+name: dataenv
+channels:
+  - defaults
+dependencies:
+  - ipykernel
+  - jupyter
+  - matplotlib
+  - numpy
+  - pandas
+  - python=3.11
+  - scikit-learn
+  - scipy
+  - seaborn
+prefix: C:\Users\Schewe\AppData\Local\anaconda3\envs\dataenv
