@@ -23,6 +23,7 @@ if not os.path.exists(participants_tsv):
     print("File does not exist: participants.tsv.")
     sys.exit(1)
 df = pd.read_csv(participants_tsv, sep="\t")
+df = df.drop(df[df["participant_id"] == 144].index)
 
 # read subjects' derivatives data
 sub = sorted(os.listdir(base_dir))
@@ -48,6 +49,8 @@ print("Loaded images:", n_subjects)
 # design_matrix = np.ones((n_subjects, 1))  # All subjects contribute to the same condition
 design_matrix = pd.DataFrame(np.ones((n_subjects, 1)), columns=["intercept"])
 print(f'Design matrix shape: {design_matrix.shape}')
+plot_design_matrix(design_matrix)
+plt.show()
 
 # Second-level GLM
 second_level_model = SecondLevelModel()
@@ -58,19 +61,34 @@ contrast = np.array([1])  # One-sample t-test (testing the constant regressor)
 map_group = second_level_model.compute_contrast(contrast,
                                                 output_type='stat')  # ['z_score', 'stat', 'p_value', 'effect_size', 'effect_variance', 'all']
 
+# save group statistic map
 out_file = "/data_wgs04/ag-sensomotorik/PPPD/analysis/part2_pre/group_level/group_statmap.nii.gz"
 nib.save(map_group, out_file)
 # plots
 plot_stat_map(map_group, title="Second-level analysis", display_mode='mosaic', cmap="inferno", threshold=3)
 plt.show()
-plot_design_matrix(design_matrix)
-plt.show()
 
 
 # two sample t-test unpaired (control vs. patient)
 # two-sample t-test
-#design_matrix = np.array([[1] * 10 + [0] * 10])  # First 10 are group 1, next 10 are group 2
-#contrast = np.array([1, -1])  # Control group vs. experimental group
+group_contrast = df["group"].map({
+    "patient": 1,
+    "control": -1
+}).values
+unpaired_design_matrix = pd.DataFrame(
+    {
+        "intercept": np.ones(len(group_contrast)),
+        "group": group_contrast
+    }
+)
+plot_design_matrix(unpaired_design_matrix)
+plt.show()
+
+second_level_model_unpaired = SecondLevelModel()
+second_level_model_unpaired = second_level_model_unpaired.fit(derivative_nii, design_matrix=unpaired_design_matrix)
+stat_maps_unpaired = second_level_model_unpaired.compute_contrast("group", output_type='stat')
+plot_stat_map(stat_maps_unpaired, display_mode='mosaic', cmap="inferno", threshold=2)
+plt.show()
 
 
-
+# two sample t-test paired
