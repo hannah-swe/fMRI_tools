@@ -23,10 +23,10 @@ import nibabel as nib
 from nilearn.image import resample_to_img
 from nilearn import plotting
 
-# ========================== KONFIGURATION ==========================
+# Configuration
 input_dir = "W:/PPPD/Auswertung_Part2/MRI/ROIs/ROI_masks"
 target_img_path = "W:/PPPD/Auswertung_Part2/MRI/ROIs/sub-01_task-rest_run-01_space-MNI152NLin2009cAsym_res-2_boldref.nii.gz"
-output_dir = "W:/PPPD/Auswertung_Part2/MRI/ROIs/final_rois"
+output_dir = "W:/PPPD/Auswertung_Part2/MRI/ROIs/final_rois2"
 
 ROI_MASKS_DIR = os.path.join(output_dir, "roi_masks")
 ROI_QC_DIR = os.path.join(output_dir, "roi_qc")
@@ -36,7 +36,7 @@ ROI_ALPHA = 0.5
 THRESHOLD = 0.1
 DISPLAY_MODE = "ortho"
 
-# ========================== NAMENS-MAPPING =========================
+# Mapping of old and new file names
 CUSTOM_NAME_MAP = {
     "ROI_Cerebellum_4_5_R_sphere_6_21_-37_-22.nii": "Cerebellum_IV_V_R_ROI_2009.nii",
     "ROI_Cerebellum_VIIa_crusI_Hem_L_MNI.nii": "Cerebellum_CrusI_L_ROI_2009.nii",
@@ -53,7 +53,8 @@ CUSTOM_NAME_MAP = {
     "ROI_Insula_Ig1_R_MNI.nii": "Insula_Ig1_R_ROI_2009.nii",
     "ROI_Insula_Ig2_L_MNI.nii": "Insula_Ig2_L_ROI_2009.nii",
     "ROI_Insula_Ig2_R_MNI.nii": "Insula_Ig2_R_ROI_2009.nii",
-    "ROI_Insula_OP3_sphere_6-36_0_10.nii": "Insula_OP3_ROI_2009.nii",
+    "ROI_Insula_OP3_sphere_6-36_0_10.nii": "Insula_OP3_sphere_ROI_2009.nii",
+    "Area-Op3_rh_MNI152.nii": "Insula_OP3_R_anat_ROI_2009.nii",
 
     "ROI_IPL_PFcm_L_MNI.nii": "IPL_PFcm_L_ROI_2009.nii",
     "ROI_IPL_PFcm_R_MNI.nii": "IPL_PFcm_R_ROI_2009.nii",
@@ -89,8 +90,28 @@ CUSTOM_NAME_MAP = {
     "Precuneus_ROI_2009.nii": "Precuneus_ROI_2009.nii",
 }
 
-# ========================== SPACE-KLASSIFIKATION =========================
 
+# Check if resampling is needed
+def roi_matches_target(roi_img, target_img, atol_affine=1e-3, atol_zoom=0.05):
+    """
+    Prüft, ob ROI exakt im selben Space wie das Target ist.
+    """
+    same_shape = roi_img.shape == target_img.shape
+
+    roi_zooms = roi_img.header.get_zooms()[:3]
+    target_zooms = target_img.header.get_zooms()[:3]
+    same_zooms = all(abs(a - b) < atol_zoom for a, b in zip(roi_zooms, target_zooms))
+
+    same_affine = np.allclose(
+        roi_img.affine,
+        target_img.affine,
+        atol=atol_affine
+    )
+
+    return same_shape and same_zooms and same_affine
+
+
+# Space classification for documentation
 def classify_roi_space(img, target_img):
     """
     Heuristische Klassifikation des Spaces der ROI.
@@ -109,19 +130,19 @@ def classify_roi_space(img, target_img):
     same_affine = np.allclose(affine, target_affine, atol=1e-3)
 
     if same_shape and same_zooms and same_affine:
-        return "MATCH_TARGET"
+        return "match_target"
 
     ratio_shape = [s / t for s, t in zip(shape, target_shape)]
     if all(0.45 < r < 0.55 or 1.9 < r < 2.1 for r in ratio_shape):
-        return "LIKELY_SAME_TEMPLATE_DIFF_RES"
+        return "likely_same_template_diff_res"
 
     if (80 <= shape[0] <= 220 and 80 <= shape[1] <= 260 and 80 <= shape[2] <= 220):
-        return "MNI_LIKE_UNSURE"
+        return "MNI_like_unsure"
 
-    return "UNKNOWN_OR_NATIVE"
+    return "unknown_or_native"
 
-# ========================== HILFSFUNKTION =========================
 
+# Helper
 def get_roi_center_mm(roi_img):
     data = roi_img.get_fdata()
     coords = np.array(np.where(data > THRESHOLD))
@@ -130,8 +151,8 @@ def get_roi_center_mm(roi_img):
     center_voxel = coords.mean(axis=1)
     return tuple(nib.affines.apply_affine(roi_img.affine, center_voxel))
 
-# ========================== MAIN =========================
 
+# Main
 def main():
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(ROI_MASKS_DIR, exist_ok=True)
@@ -169,8 +190,20 @@ def main():
                 log.write(f"[LOAD_ERROR] {fname}: {e}\n")
                 continue
 
-            final_img = resample_to_img(roi_img, target_img, interpolation="nearest")
-            nib.save(final_img, final_path)
+            if roi_matches_target(roi_img, target_img):
+                # ROI ist bereits korrekt → unverändert übernehmen
+                final_img = roi_img
+                nib.save(final_img, final_path)
+                resample_flag = "not_resampled"
+            else:
+                # ROI ist im falschen Space → resamplen
+                final_img = resample_to_img(
+                    roi_img,
+                    target_img,
+                    interpolation="nearest"
+                )
+                nib.save(final_img, final_path)
+                resample_flag = "resampled"
 
             cut_coords = get_roi_center_mm(final_img)
             display = plotting.plot_roi(
@@ -185,13 +218,15 @@ def main():
             display.savefig(qc_path, dpi=200)
             display.close()
 
-            log.write(f"{fname} -> {new_name} | SPACE: {space_class} | OK\n")
+            log.write(
+                f"{fname} -> {new_name} | Space: {space_class} | {resample_flag}\n"
+            )
 
-            if space_class in ["MNI_LIKE_UNSURE", "UNKNOWN_OR_NATIVE"]:
-                log.write(f"WARNING: Unsicherer Space! Visuelle Kontrolle empfohlen\n")
+            if space_class in ["MNI_like_unsure", "unknown_or_native"]:
+                log.write(f"WARNING: Space unsure! Visual check recommended\n")
 
 
-# ========================== ENTRY POINT =========================
+# ENTRY POINT
 
 if __name__ == "__main__":
     main()
