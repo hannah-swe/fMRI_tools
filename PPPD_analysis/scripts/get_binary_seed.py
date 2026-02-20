@@ -8,8 +8,8 @@ ref_img = nib.load(ref_path)
 
 # Config name, coordinates and radius here:
 seed_name = "Precuneus"
-center_mni_mm = (0, -60, 40)
-radius_mm = 8
+center_mni_mm = (1, -61, 38)
+radius_mm = 6
 
 def make_sphere_seed(ref_img, center_mni_mm, radius_mm, dtype=np.uint8):
     """

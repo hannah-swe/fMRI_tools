@@ -26,7 +26,7 @@ from nilearn import plotting
 # Configuration
 input_dir = "W:/PPPD/Auswertung_Part2/MRI/ROIs/ROI_masks"
 target_img_path = "W:/PPPD/Auswertung_Part2/MRI/ROIs/sub-01_task-rest_run-01_space-MNI152NLin2009cAsym_res-2_boldref.nii.gz"
-output_dir = "W:/PPPD/Auswertung_Part2/MRI/ROIs/final_rois2"
+output_dir = "W:/PPPD/Auswertung_Part2/MRI/ROIs/final_rois"
 
 ROI_MASKS_DIR = os.path.join(output_dir, "roi_masks")
 ROI_QC_DIR = os.path.join(output_dir, "roi_qc")
