@@ -38,6 +38,7 @@ metrics = [
     ("falff_gm_mean",  "Global fALFF (GM mask)",  "falff_gm_mean_on_pipelines.png"),
     ("falff_csf_mean", "Global fALFF (CSF mask)", "falff_csf_mean_on_pipelines.png"),
     ("falff_wm_mean",  "Global fALFF (WM mask)",  "falff_wm_mean_on_pipelines.png"),
+    ("falff_wb_mean", "Global fALFF (whole brain)", "falff_wb_mean_on_pipelines.png"),
 ]
 
 # Plot

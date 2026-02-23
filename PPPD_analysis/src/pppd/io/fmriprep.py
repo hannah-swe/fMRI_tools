@@ -18,3 +18,6 @@ def wm_probseg_mni(sub_dir: Path, sub: str) -> Path:
 
 def csf_probseg_mni(sub_dir: Path, sub: str) -> Path:
     return sub_dir / "anat" / f"{sub}_space-MNI152NLin2009cAsym_res-2_label-CSF_probseg.nii.gz"
+
+def brain_mask_mni(sub_dir: Path, sub: str) -> Path:
+    return sub_dir / "anat" / f"{sub}_space-MNI152NLin2009cAsym_res-2_desc-brain_mask.nii.gz"

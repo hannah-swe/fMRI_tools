@@ -6,7 +6,7 @@ from pppd.config.masks import dmn_mask, roi_masks
 from pppd.metrics.nifti import mean_in_mask_nii, weighted_mean_in_probseg
 from pppd.metrics.roi import extract_roi_means
 from pppd.io.features import seedfc_map_path, falff_map_path
-from pppd.io.fmriprep import gm_probseg_mni, wm_probseg_mni, csf_probseg_mni
+from pppd.io.fmriprep import gm_probseg_mni, wm_probseg_mni, csf_probseg_mni, brain_mask_mni
 
 
 # CONFIG:
@@ -66,6 +66,12 @@ def build_feature_rows(
             row[f"{feature}_csf_mean"] = weighted_mean_in_probseg(img_path, csf_path,
                                                                   threshold=threshold) if csf_path.exists() else float(
                 "nan")
+
+            brain_mask_path = brain_mask_mni(fmri_sub_dir, sub)
+            if brain_mask_path.exists():
+                row[f"{feature}_wb_mean"] = mean_in_mask_nii(img_path, brain_mask_path)
+            else:
+                row[f"{feature}_wb_mean"] = float("nan")
 
             # ROI means (re-using your Harvard-Oxford masks)
             roi_means = extract_roi_means(img_path, roi_masks)
