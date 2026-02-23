@@ -158,8 +158,6 @@ if DO_FEATURE:
 
     print("[FEATURE] Outcomes to plot:", outcome_cols)
 
-    from scipy.stats import ttest_rel  # zusätzlich zu pearsonr
-
 
     def p_to_stars(p: float) -> str:
         if p < 0.001:

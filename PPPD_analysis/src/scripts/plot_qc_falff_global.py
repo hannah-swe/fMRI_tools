@@ -2,7 +2,7 @@ from pathlib import Path
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from scipy.stats import ttest_rel
+from scipy.stats import pearsonr, ttest_rel
 from pppd.config.pipelines import palette
 
 # CONFIG:
@@ -136,6 +136,12 @@ plt.show()
 
 
 # Plot 3: delta fALFF (scrub - no-scrub) on percentage of scrubbed volumes in GM ans CSF
+for tissue in ["GM", "CSF"]:
+    d = delta_long[delta_long["tissue"] == tissue]
+
+    r, p = pearsonr(d["pct_scrub"], d["delta_falff"])
+    print(f"{tissue}: r = {r:.3f}, p = {p:.3g}")
+
 plt.figure(figsize=(12, 7))
 g = sns.lmplot(
     data=delta_long,
