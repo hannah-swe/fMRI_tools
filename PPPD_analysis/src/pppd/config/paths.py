@@ -16,8 +16,8 @@ participants_path = Path("/data_wgs04/ag-sensomotorik/PPPD/data/part2_pre/partic
 # Path to reportvals textfile
 reportvals_path = Path("/data_wgs04/ag-sensomotorik/PPPD/analysis/part2_pre_old/reports/reportvals.txt")
 
-# CONFIG: which subjects to drop? (those subjects don't have complete data sets atm)
-subs_to_drop = ["sub-118", "sub-124", "sub-126", "sub-134", "sub-140", "sub-144", "sub-164"]
+# CONFIG: which subjects to drop?
+subs_to_drop = ["sub-134", "sub-140"]
 
 # Path to save plots
 out_dir = Path("/home/hannahschewe/Documents/PPPD_analysis/quality_check_plots")

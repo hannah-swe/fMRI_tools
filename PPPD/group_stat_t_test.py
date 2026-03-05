@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# perform group level analysis of rs-fMRI derivatives
-import argparse
 import os
 import sys
 from bids import BIDSLayout
