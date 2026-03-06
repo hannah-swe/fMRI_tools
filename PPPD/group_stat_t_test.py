@@ -1,7 +1,7 @@
 import os
 import sys
-from bids import BIDSLayout
 import nibabel as nib
+from PPPD import _get_data_path
 from nibabel import load
 from nilearn import plotting
 from nilearn import datasets
@@ -11,8 +11,11 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
+# CONFIG:
+feature = "seed_based"
+
 # path to halfpipe derivatives directory
-base_dir = "/data_wgs04/ag-sensomotorik/PPPD/analysis/part2_pre/derivatives/halfpipe"
+base_dir = _get_data_path(feature)
 
 # read participants.tsv
 participants_tsv = "/data_wgs04/ag-sensomotorik/PPPD/data/part2_pre/participants.tsv"

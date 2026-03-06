@@ -1,6 +1,8 @@
 import os
 from PPPD.subjects import subs
 
+SUPPORTED_FEATURES = ["seed_based", "falff"]
+
 # creates list of full subject ids
 subject_ids = []
 for s in subs:
@@ -8,15 +10,18 @@ for s in subs:
     subject_ids.append(subject_id)
 
 # Path to folder with all HALFpipe working directories
-data_path = '/data_wgs04/ag-sensomotorik/PPPD/analysis/'
+analysis_path = '/data_wgs04/ag-sensomotorik/PPPD/analysis/'
 
 # Gets the path for first seed-based analysis folder
-def _get_seed_based_path():
-    seed_based_path = os.path.join(data_path, "both_parts_seed1")
-    return seed_based_path
+def _get_data_path(feature):
+    if feature not in SUPPORTED_FEATURES:
+        raise ValueError(f"Unsupported feature: {feature}")
+    if feature == "seed_based":
+        return os.path.join(analysis_path, "both_parts_seed1")
+    if feature == "falff":
+        return os.path.join(analysis_path, "both_parts_falff") # TODO: what going on here?
 
-# Gets the path for fALFF analysis folder
-def _get_falff_path():
-    falff_path = os.path.join(data_path, "both_parts_falff")
-    return falff_path
+
+# TODO: def _get_derivates_path(feature):
+# TODO: add function to participants.tsv
 
