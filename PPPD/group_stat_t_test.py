@@ -2,6 +2,8 @@ import os
 import sys
 import nibabel as nib
 from PPPD import _get_data_path
+from PPPD import _get_derivatives_path
+from PPPD import _get_participants_tsv
 from nibabel import load
 from nilearn import plotting
 from nilearn import datasets
@@ -18,13 +20,9 @@ feature = "seed_based"
 base_dir = _get_data_path(feature)
 
 # read participants.tsv
-participants_tsv = "/data_wgs04/ag-sensomotorik/PPPD/data/part2_pre/participants.tsv"
-if not os.path.exists(participants_tsv):
-    print("File does not exist: participants.tsv.")
-    sys.exit(1)
-df = pd.read_csv(participants_tsv, sep="\t")
-df = df.drop(df[df["participant_id"] == 144].index)
+participants_df = _get_participants_tsv()
 
+# TODO: stopped here
 # read subjects' derivatives data
 sub = sorted(os.listdir(base_dir))
 derivative_nii = []

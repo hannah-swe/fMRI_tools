@@ -1,4 +1,5 @@
 import os
+import pandas as pd
 from PPPD.subjects import subs
 
 SUPPORTED_FEATURES = ["seed_based", "falff"]
@@ -11,8 +12,10 @@ for s in subs:
 
 # Path to folder with all HALFpipe working directories
 analysis_path = '/data_wgs04/ag-sensomotorik/PPPD/analysis/'
+raw_data_path = '/data_wgs04/ag-sensomotorik/PPPD/data/all_subjects1/'
 
-# Gets the path for first seed-based analysis folder
+
+# Gets the path for analysis folder based on the selected feature
 def _get_data_path(feature):
     if feature not in SUPPORTED_FEATURES:
         raise ValueError(f"Unsupported feature: {feature}")
@@ -20,8 +23,26 @@ def _get_data_path(feature):
         return os.path.join(analysis_path, "both_parts_seed1")
     if feature == "falff":
         return os.path.join(analysis_path, "both_parts_falff") # TODO: what going on here?
+    return None
 
 
-# TODO: def _get_derivates_path(feature):
-# TODO: add function to participants.tsv
+# Gets the part for the derivatives folder based on the selected feature
+def _get_derivatives_path(feature):
+    if feature not in SUPPORTED_FEATURES:
+        raise ValueError(f"Unsupported feature: {feature}")
+    if feature == "seed_based":
+        return os.path.join(analysis_path, "both_parts_seed1", "derivatives")
+    if feature == "falff":
+        return os.path.join(analysis_path, "both_parts_falff", "derivatives")
+    return None
 
+
+# Gets participants.tsv from data folder
+def _get_participants_tsv():
+    tsv_path = os.path.join(raw_data_path, "participants.tsv")
+    if not os.path.exists(tsv_path):
+        raise FileNotFoundError(f"No participants.tsv found in {tsv_path}")
+    df = pd.read_csv(tsv_path, sep="\t")
+    return df
+
+participants = _get_participants_tsv()
