@@ -6,6 +6,7 @@ from PPPD.subjects import subs, subjects_to_exclude
 from nibabel import load
 from nilearn import plotting
 from nilearn import datasets
+from nilearn.glm import threshold_stats_img
 from nilearn.glm.second_level import SecondLevelModel
 from nilearn.plotting import plot_stat_map, plot_design_matrix
 import numpy as np
@@ -15,8 +16,8 @@ import matplotlib.pyplot as plt
 # CONFIG:
 task = "rest"
 run = "run-01"
-feature = "seed_based"
-seed = "Precuneus"
+feature = "falff"
+seed = None
 
 # path to halfpipe derivatives directory
 base_dir = _get_data_path(feature)
@@ -69,11 +70,21 @@ plt.show()
 second_level_model_unpaired = SecondLevelModel()
 second_level_model_unpaired = second_level_model_unpaired.fit(derivative_nii, design_matrix=unpaired_design_matrix)
 stat_map_unpaired = second_level_model_unpaired.compute_contrast("group", output_type='stat')
-plot_stat_map(stat_map_unpaired, display_mode='mosaic', cmap="inferno", threshold=2)
+plot_stat_map(stat_map_unpaired, display_mode='mosaic', cmap="inferno")
 plt.show()
 
+thresholded_map, threshold = threshold_stats_img(stat_map_unpaired, alpha=0.15, height_control='fdr', two_sided=True)
+plot_stat_map(thresholded_map, display_mode='mosaic', cmap="inferno")
+plt.show()
 
-# two sample t-test paired
+thresholded_map, threshold = threshold_stats_img(
+    stat_map_unpaired,
+    threshold=3.1,  # p < 0.001 uncorrected
+    height_control=None
+)
+plot_stat_map(thresholded_map, display_mode='mosaic', cmap="inferno")
+plt.show()
+
 
 # one-sample t-test
 # Design matrix for second-level analysis: 1 for each subject (single-group design)
