@@ -2,13 +2,15 @@ import os
 import pandas as pd
 from PPPD.subjects import subs
 
+SUPPORTED_TASKS = ["rest"]
 SUPPORTED_FEATURES = ["seed_based", "falff"]
+SUPPORTED_RUNS = ["run-01", "run-02"]
+SUPPORTED_SEEDS = ["InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
+                   "InsulaOP3RAnat", "InsulaOP3Sphere",
+                   "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",
+                   "OperculumOP1L", "OperculumOP1R", "OperculumOP2L", "OperculumOP2R", "OperculumOP4L", "OperculumOP4R",
+                   "Precuneus"]
 
-# creates list of full subject ids
-subject_ids = []
-for s in subs:
-    subject_id = f"sub-{s:03d}"
-    subject_ids.append(subject_id)
 
 # Path to folder with all HALFpipe working directories
 analysis_path = '/data_wgs04/ag-sensomotorik/PPPD/analysis/'
@@ -31,9 +33,9 @@ def _get_derivatives_path(feature):
     if feature not in SUPPORTED_FEATURES:
         raise ValueError(f"Unsupported feature: {feature}")
     if feature == "seed_based":
-        return os.path.join(analysis_path, "both_parts_seed1", "derivatives")
+        return os.path.join(analysis_path, "both_parts_seed1", "derivatives", "halfpipe")
     if feature == "falff":
-        return os.path.join(analysis_path, "both_parts_falff", "derivatives")
+        return os.path.join(analysis_path, "both_parts_falff", "derivatives", "halfpipe")
     return None
 
 
@@ -45,4 +47,23 @@ def _get_participants_tsv():
     df = pd.read_csv(tsv_path, sep="\t")
     return df
 
-participants = _get_participants_tsv()
+
+# Gets full filename for statistical maps via run, feature and seed
+def _get_full_filename(subject_id, task, run, feature, seed=None):
+    if task not in SUPPORTED_TASKS:
+        raise ValueError(f"Unsupported task: {task}")
+    if run not in SUPPORTED_RUNS:
+        raise ValueError(f"Unsupported run: {run}")
+    if feature not in SUPPORTED_FEATURES:
+        raise ValueError(f"Unsupported feature: {feature}")
+
+    if feature == 'seed_based':
+        if seed not in SUPPORTED_SEEDS:
+            raise ValueError(f"Unsupported seed: {seed}")
+        filename = f"{subject_id}_task-{task}_{run}_feature-seedbased_seed-{seed}_stat-effect_statmap.nii.gz"
+    elif feature == 'falff':
+        filename = f"{subject_id}_task-{task}_{run}_feature-fALFF_falff.nii.gz"
+    else:
+        raise ValueError(f"Unsupported feature: {feature}")
+
+    return filename

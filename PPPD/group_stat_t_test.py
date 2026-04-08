@@ -1,9 +1,8 @@
 import os
 import sys
 import nibabel as nib
-from PPPD import _get_data_path
-from PPPD import _get_derivatives_path
-from PPPD import _get_participants_tsv
+from PPPD import _get_data_path, _get_derivatives_path, _get_participants_tsv, _get_full_filename
+from PPPD.subjects import subs, subjects_to_exclude
 from nibabel import load
 from nilearn import plotting
 from nilearn import datasets
@@ -14,33 +13,67 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 # CONFIG:
+task = "rest"
+run = "run-01"
 feature = "seed_based"
+seed = "Precuneus"
 
 # path to halfpipe derivatives directory
 base_dir = _get_data_path(feature)
 
 # read participants.tsv
 participants_df = _get_participants_tsv()
+participants_df["subject_id"] = participants_df["participant_id"].apply(lambda x: f"sub-{x:03d}")
 
-# TODO: stopped here
+# get derivatives path
+deriv_dir = _get_derivatives_path(feature)
+
 # read subjects' derivatives data
-sub = sorted(os.listdir(base_dir))
 derivative_nii = []
-for s in sub:
-    img = os.path.join(base_dir, s, "func", "task-rest",
-                       f"{s}_task-rest_run-01_feature-seedPrecNoscrub_seed-Precuneus_stat-effect_statmap.nii.gz")
+included_subjects = []
+
+for s in subs:
+    subject_id = f"sub-{s:03d}"
+    filename = _get_full_filename(subject_id, task, run, feature, seed)
+    img = os.path.join(deriv_dir, subject_id, "func", f"task-{task}", filename)
     if not os.path.exists(img):
         print(f"Missing file: {img}")
         continue
     try:
         nib.load(img)
         derivative_nii.append(img)
+        included_subjects.append(subject_id)
     except Exception as e:
         print(f"Error loading {img}: {e}")
         continue
-n_subjects = len(derivative_nii)
-print("Loaded images:", n_subjects)
 
+print("Loaded images:", len(derivative_nii))
+
+# two sample t-test unpaired (control vs. patient)
+# get design matrix and plot it
+design_df = participants_df[participants_df["subject_id"].isin(included_subjects)].copy()
+design_df = design_df.set_index("subject_id").loc[included_subjects].reset_index()
+group_contrast = design_df["group"].map({
+    "patient": 1,
+    "control": -1
+}).values
+unpaired_design_matrix = pd.DataFrame({
+        "intercept": np.ones(len(group_contrast)),
+        "group": group_contrast
+})
+print(len(derivative_nii))
+print(unpaired_design_matrix.shape)
+plot_design_matrix(unpaired_design_matrix)
+plt.show()
+# fit model and plot output
+second_level_model_unpaired = SecondLevelModel()
+second_level_model_unpaired = second_level_model_unpaired.fit(derivative_nii, design_matrix=unpaired_design_matrix)
+stat_map_unpaired = second_level_model_unpaired.compute_contrast("group", output_type='stat')
+plot_stat_map(stat_map_unpaired, display_mode='mosaic', cmap="inferno", threshold=2)
+plt.show()
+
+
+# two sample t-test paired
 
 # one-sample t-test
 # Design matrix for second-level analysis: 1 for each subject (single-group design)
@@ -65,28 +98,3 @@ nib.save(map_group, out_file)
 # plots
 plot_stat_map(map_group, title="Second-level analysis", display_mode='mosaic', cmap="inferno", threshold=3)
 plt.show()
-
-
-# two sample t-test unpaired (control vs. patient)
-# two-sample t-test
-group_contrast = df["group"].map({
-    "patient": 1,
-    "control": -1
-}).values
-unpaired_design_matrix = pd.DataFrame(
-    {
-        "intercept": np.ones(len(group_contrast)),
-        "group": group_contrast
-    }
-)
-plot_design_matrix(unpaired_design_matrix)
-plt.show()
-
-second_level_model_unpaired = SecondLevelModel()
-second_level_model_unpaired = second_level_model_unpaired.fit(derivative_nii, design_matrix=unpaired_design_matrix)
-stat_maps_unpaired = second_level_model_unpaired.compute_contrast("group", output_type='stat')
-plot_stat_map(stat_maps_unpaired, display_mode='mosaic', cmap="inferno", threshold=2)
-plt.show()
-
-
-# two sample t-test paired
