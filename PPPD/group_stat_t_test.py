@@ -7,6 +7,7 @@ from PPPD import _get_data_path, _get_derivatives_path, _get_participants_tsv, _
 from PPPD.subjects import subs, subjects_to_exclude
 from nilearn.glm import threshold_stats_img
 from nilearn.glm.second_level import SecondLevelModel
+from nilearn.image import threshold_img
 from nilearn.plotting import plot_stat_map, plot_design_matrix, plot_glass_brain
 from nilearn.masking import intersect_masks
 import numpy as np
@@ -16,13 +17,13 @@ import pandas as pd
 # CONFIG:
 task = "rest"
 run = "run-01"
-feature = "falff"
+feature = "seed_based" # supported features: "falff", "seed_based"
 '''List of supported seeds: "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
                             "InsulaOP3RAnat", "InsulaOP3Sphere",
                             "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",
                             "OperculumOP1L", "OperculumOP1R", "OperculumOP2L", "OperculumOP2R", "OperculumOP4L", "OperculumOP4R",
                             "Precuneus" '''
-seed = None
+seed = "InsulaOP3RAnat"
 threshold_mask = 0.8
 
 # path to halfpipe derivatives directory
@@ -96,48 +97,56 @@ print(unpaired_design_matrix.shape)
 plot_design_matrix(unpaired_design_matrix)
 plt.show()
 
-# fit model and plot output
+# fit model (here: z-scores are used, also possible: 'z_score', 'stat', 'p_value', 'effect_size', 'effect_variance', 'all')
 second_level_model_unpaired = SecondLevelModel(mask_img=group_mask)
 second_level_model_unpaired = second_level_model_unpaired.fit(derivative_nii, design_matrix=unpaired_design_matrix)
-stat_map_unpaired = second_level_model_unpaired.compute_contrast("group", output_type='stat')
+z_map = second_level_model_unpaired.compute_contrast("group", output_type='z_score')
 
-# plots
-plot_stat_map(stat_map_unpaired, display_mode='mosaic', cmap="inferno", threshold=2)
-plt.show()
-plot_glass_brain(stat_map_unpaired, cmap="inferno", threshold=2)
-plt.show()
 
-thresholded_map, threshold = threshold_stats_img(stat_map_unpaired, alpha=0.05, height_control='fdr', two_sided=True)
-plot_stat_map(thresholded_map, display_mode='mosaic', cmap="inferno")
+# Version 1: abs(z) > 3.29 (equivalent to p < 0.001), cluster size > 10 voxels
+thresholded_map1 = threshold_img(z_map, threshold=3.29, cluster_threshold=10, two_sided=True)
+plot_stat_map(thresholded_map1, display_mode='mosaic', cmap="inferno", threshold=3.29, vmin=3.29,
+              title=f"z map {feature} {seed}; z > 3.29; clusters > 10 voxels")
 plt.show()
-plot_glass_brain(thresholded_map, cmap="inferno")
-plt.show()
-
-thresholded_map, threshold = threshold_stats_img(
-    stat_map_unpaired,
-    threshold=3.1,  # p < 0.001 uncorrected
-    height_control=None
-)
-plot_stat_map(thresholded_map, display_mode='mosaic', cmap="inferno")
-plt.show()
-plot_glass_brain(thresholded_map, cmap="inferno", vmin=threshold)
+plot_glass_brain(thresholded_map1, cmap="inferno", threshold=3.29, vmin=3.29,
+                 title=f"z map {feature} {seed}; z > 3.29; clusters > 10 voxels")
 plt.show()
 
 
+# Version 2: thresholding z-statistic image with a false positive rate < .001, cluster size > 10 voxels
+thresholded_map2, threshold2 = threshold_stats_img(z_map, alpha=0.001, height_control="fpr", cluster_threshold=10, two_sided=True)
+plot_stat_map(thresholded_map2, display_mode='mosaic', cmap="inferno", threshold=threshold2, vmin=threshold2,
+              title=f"z map {feature} {seed}; fpr < .001; clusters > 10 voxels")
+plt.show()
+plot_glass_brain(thresholded_map2, cmap="inferno", threshold=threshold2, vmin=threshold2,
+                 title=f"z map {feature} {seed}; fpr < .001; clusters > 10 voxels")
+plt.show()
 
 
-# Second-level GLM
-second_level_model = SecondLevelModel()
-second_level_model = second_level_model.fit(derivative_nii, design_matrix=design_matrix)
+# Version 3: FDR <.05 (False Discovery Rate) and no cluster-level threshold
+thresholded_map3, threshold3 = threshold_stats_img(z_map, alpha=0.05, height_control="fdr")
+print(f"The FDR=.05 threshold is {threshold3:.3g}")
+plot_stat_map(thresholded_map3, display_mode='mosaic', cmap="inferno", threshold=threshold3, vmin=threshold3,
+              title=f"z map {feature} {seed}; fdr < .05")
+plt.show()
+plot_glass_brain(thresholded_map3, cmap="inferno", threshold=threshold3, vmin=threshold3,
+                 title=f"z map {feature} {seed}; fdr < .05")
+plt.show()
 
-# Contrast: Testing the mean effect across subjects
-contrast = np.array([1])  # One-sample t-test (testing the constant regressor)
-map_group = second_level_model.compute_contrast(contrast,
-                                                output_type='stat')  # ['z_score', 'stat', 'p_value', 'effect_size', 'effect_variance', 'all']
 
+# Version 4: FWER <.05 (Family-Wise Error Rate) and no cluster-level threshold
+thresholded_map4, threshold4 = threshold_stats_img(z_map, alpha=0.05, height_control="bonferroni")
+print(f"The p<.05 Bonferroni-corrected threshold is {threshold4:.3g}")
+plot_stat_map(thresholded_map4, display_mode='mosaic', cmap="inferno", threshold=threshold4, vmin=threshold4,
+              title=f"z map {feature} {seed}; fwer < .05")
+plt.show()
+plot_glass_brain(thresholded_map4, cmap="inferno", threshold=threshold4, vmin=threshold4,
+                 title=f"z map {feature} {seed}; fwer < .05")
+plt.show()
+
+
+
+# TODO: save outputs
 # save group statistic map
-out_file = "/data_wgs04/ag-sensomotorik/PPPD/analysis/part2_pre/group_level/group_statmap.nii.gz"
-nib.save(map_group, out_file)
-# plots
-plot_stat_map(map_group, title="Second-level analysis", display_mode='mosaic', cmap="inferno", threshold=3)
-plt.show()
+# out_file = "/data_wgs04/ag-sensomotorik/PPPD/analysis/part2_pre/group_level/group_statmap.nii.gz"
+# nib.save(map_group, out_file)
