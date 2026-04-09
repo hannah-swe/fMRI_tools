@@ -2,13 +2,9 @@ import matplotlib
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 import os
-import sys
 import nibabel as nib
 from PPPD import _get_data_path, _get_derivatives_path, _get_participants_tsv, _get_full_filename, _get_mask_filename
 from PPPD.subjects import subs, subjects_to_exclude
-from nibabel import load
-from nilearn import plotting
-from nilearn import datasets
 from nilearn.glm import threshold_stats_img
 from nilearn.glm.second_level import SecondLevelModel
 from nilearn.plotting import plot_stat_map, plot_design_matrix, plot_glass_brain
