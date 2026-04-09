@@ -24,7 +24,7 @@ def _get_data_path(feature):
     if feature == "seed_based":
         return os.path.join(analysis_path, "both_parts_seed1")
     if feature == "falff":
-        return os.path.join(analysis_path, "both_parts_falff") # TODO: what going on here?
+        return os.path.join(analysis_path, "both_parts_falff")
     return None
 
 
