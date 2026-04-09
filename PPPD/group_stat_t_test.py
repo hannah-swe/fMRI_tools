@@ -1,9 +1,10 @@
 import matplotlib
 matplotlib.use("TkAgg")
+import matplotlib.pyplot as plt
 import os
 import sys
 import nibabel as nib
-from PPPD import _get_data_path, _get_derivatives_path, _get_participants_tsv, _get_full_filename
+from PPPD import _get_data_path, _get_derivatives_path, _get_participants_tsv, _get_full_filename, _get_mask_filename
 from PPPD.subjects import subs, subjects_to_exclude
 from nibabel import load
 from nilearn import plotting
@@ -11,20 +12,22 @@ from nilearn import datasets
 from nilearn.glm import threshold_stats_img
 from nilearn.glm.second_level import SecondLevelModel
 from nilearn.plotting import plot_stat_map, plot_design_matrix, plot_glass_brain
+from nilearn.masking import intersect_masks
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
+
 
 # CONFIG:
 task = "rest"
 run = "run-01"
-feature = "seed_based"
+feature = "falff"
 '''List of supported seeds: "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
                             "InsulaOP3RAnat", "InsulaOP3Sphere",
                             "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",
                             "OperculumOP1L", "OperculumOP1R", "OperculumOP2L", "OperculumOP2R", "OperculumOP4L", "OperculumOP4R",
                             "Precuneus" '''
-seed = "Precuneus"
+seed = None
+threshold_mask = 0.8
 
 # path to halfpipe derivatives directory
 base_dir = _get_data_path(feature)
@@ -39,9 +42,14 @@ deriv_dir = _get_derivatives_path(feature)
 # read subjects' derivatives data
 derivative_nii = []
 included_subjects = []
+mask_imgs = []
 
 for s in subs:
+    if s in subjects_to_exclude:
+        continue
     subject_id = f"sub-{s:03d}"
+
+    # get statistical nifti maps
     filename = _get_full_filename(subject_id, task, run, feature, seed)
     img = os.path.join(deriv_dir, subject_id, "func", f"task-{task}", filename)
     if not os.path.exists(img):
@@ -55,7 +63,25 @@ for s in subs:
         print(f"Error loading {img}: {e}")
         continue
 
+    # get mask images for the group mask
+    mask_filename = _get_mask_filename(subject_id, task, run, feature, seed)
+    mask = os.path.join(deriv_dir, subject_id, "func", f"task-{task}", mask_filename)
+    if not os.path.exists(mask):
+        print(f"Missing mask: {mask}")
+        continue
+    try:
+        nib.load(mask)
+        mask_imgs.append(mask)
+    except Exception as e:
+        print(f"Error loading mask {mask}: {e}")
+        continue
+
 print("Loaded images:", len(derivative_nii))
+print("Loaded masks:", len(mask_imgs))
+
+# get group mask
+group_mask = intersect_masks(mask_imgs, threshold=threshold_mask)
+
 
 # two sample t-test unpaired (control vs. patient)
 # get design matrix and plot it
@@ -73,11 +99,14 @@ print(len(derivative_nii))
 print(unpaired_design_matrix.shape)
 plot_design_matrix(unpaired_design_matrix)
 plt.show()
+
 # fit model and plot output
-second_level_model_unpaired = SecondLevelModel()
+second_level_model_unpaired = SecondLevelModel(mask_img=group_mask)
 second_level_model_unpaired = second_level_model_unpaired.fit(derivative_nii, design_matrix=unpaired_design_matrix)
 stat_map_unpaired = second_level_model_unpaired.compute_contrast("group", output_type='stat')
-plot_stat_map(stat_map_unpaired, display_mode='mosaic', threshold=2, cmap="inferno")
+
+# plots
+plot_stat_map(stat_map_unpaired, display_mode='mosaic', cmap="inferno", threshold=2)
 plt.show()
 plot_glass_brain(stat_map_unpaired, cmap="inferno", threshold=2)
 plt.show()

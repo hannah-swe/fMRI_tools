@@ -67,3 +67,16 @@ def _get_full_filename(subject_id, task, run, feature, seed=None):
         raise ValueError(f"Unsupported feature: {feature}")
 
     return filename
+
+
+# Gets the filename of subject-wise brain masks to create a group wide brain mask
+def _get_mask_filename(subject_id, task, run, feature, seed=None):
+    if feature == 'seed_based':
+        if seed not in SUPPORTED_SEEDS:
+            raise ValueError(f"Unsupported seed: {seed}")
+        mask_filename = f"{subject_id}_task-{task}_{run}_feature-seedbased_seed-{seed}_mask.nii.gz"
+    elif feature == 'falff':
+        mask_filename = f"{subject_id}_task-{task}_{run}_feature-fALFF_mask.nii.gz"
+    else:
+        raise ValueError(f"Unsupported feature: {feature}")
+    return mask_filename
