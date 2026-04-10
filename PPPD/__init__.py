@@ -15,6 +15,7 @@ SUPPORTED_SEEDS = ["InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "Insu
 # Path to folder with all HALFpipe working directories
 analysis_path = '/data_wgs04/ag-sensomotorik/PPPD/analysis/'
 raw_data_path = '/data_wgs04/ag-sensomotorik/PPPD/data/all_subjects1/'
+output_path = '/data_wgs04/ag-sensomotorik/PPPD/analysis/group_level/'
 
 
 # Gets the path for analysis folder based on the selected feature
@@ -80,3 +81,13 @@ def _get_mask_filename(subject_id, task, run, feature, seed=None):
     else:
         raise ValueError(f"Unsupported feature: {feature}")
     return mask_filename
+
+
+# Gets output path
+def _get_output_path(feature):
+    if feature == "seed_based":
+        return os.path.join(output_path, "both_parts_seed1")
+    elif feature == "falff":
+        return os.path.join(output_path, "both_parts_falff")
+    else:
+        raise ValueError(f"Unsupported feature: {feature}")
