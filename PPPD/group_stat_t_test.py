@@ -18,14 +18,15 @@ import pandas as pd
 # CONFIG:
 task = "rest"
 run = "run-01"
-feature = "falff" # supported features: "falff", "seed_based"
+feature = "seed_based" # supported features: "falff", "seed_based"
 '''List of supported seeds: "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
                             "InsulaOP3RAnat", "InsulaOP3Sphere",
                             "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",
                             "OperculumOP1L", "OperculumOP1R", "OperculumOP2L", "OperculumOP2R", "OperculumOP4L", "OperculumOP4R",
                             "Precuneus" '''
-seed = None
+seed = "Precuneus"
 threshold_mask = 0.8
+group_comparison = "HC>pat" # supported comparisons: "pat>HC", "HC>pat"
 
 # path to halfpipe derivatives directory
 base_dir = _get_data_path(feature)
@@ -83,23 +84,31 @@ print("Loaded masks:", len(mask_imgs))
 # get group mask
 group_mask = intersect_masks(mask_imgs, threshold=threshold_mask)
 
+# group mapping for contrast
+if group_comparison == "pat>HC":
+    group_mapping = {
+        "patient": 1,
+        "control": -1}
+elif group_comparison == "HC>pat":
+    group_mapping = {
+        "control": 1,
+        "patient": -1}
+else:
+    raise ValueError(f"Unknown group comparison: {group_comparison}")
 
 # two sample t-test unpaired (control vs. patient)
 # get design matrix and plot it
 design_df = participants_df[participants_df["subject_id"].isin(included_subjects)].copy()
 design_df = design_df.set_index("subject_id").loc[included_subjects].reset_index()
-group_contrast = design_df["group"].map({
-    "patient": 1,
-    "control": -1
-}).values
+group_contrast = design_df["group"].map(group_mapping).values
 unpaired_design_matrix = pd.DataFrame({
         "intercept": np.ones(len(group_contrast)),
         "group": group_contrast
 })
 print(len(derivative_nii))
 print(unpaired_design_matrix.shape)
-plot_design_matrix(unpaired_design_matrix)
-plt.show()
+# plot_design_matrix(unpaired_design_matrix)
+# plt.show()
 
 # fit model (here: z-scores are used, also possible: 'z_score', 'stat', 'p_value', 'effect_size', 'effect_variance', 'all')
 second_level_model_unpaired = SecondLevelModel(mask_img=group_mask)
@@ -108,11 +117,11 @@ z_map = second_level_model_unpaired.compute_contrast("group", output_type='z_sco
 
 # define the file suffix
 if feature == "seed_based":
-    base_title = f"{feature} {seed}"
-    file_suffix = f"{feature}_{seed}"
+    base_title = f"{feature} {seed}; {group_comparison}"
+    file_suffix = f"{feature}_{seed}_{group_comparison}"
 else:
-    base_title = f"{feature}"
-    file_suffix = f"{feature}"
+    base_title = f"{feature}; {group_comparison}"
+    file_suffix = f"{feature}_{group_comparison}"
 
 
 # Version 1: abs(z) > 3.29 (equivalent to p < 0.001), cluster size > 10 voxels
@@ -123,9 +132,15 @@ plt.show()
 plot_glass_brain(thresholded_map1, cmap="inferno", threshold=3.29, vmin=3.29,
                  title=f"z map {base_title}; z > 3.29; clusters > 10 voxels")
 plt.show()
-report_v1 = make_glm_report(model=second_level_model_unpaired, contrasts="group",
-                            title=f"GLM report | {base_title} | z > 3.29, cluster > 10", height_control=None,
-                            threshold=3.29, cluster_threshold=10, two_sided=False, plot_type="glass")
+report_v1 = second_level_model_unpaired.generate_report(
+    contrasts="group",
+    title=f"GLM report | {base_title} | z > 3.29, cluster > 10",
+    height_control=None,
+    threshold=3.29,
+    cluster_threshold=10,
+    two_sided=False,
+    plot_type="glass",
+)
 report_v1.save_as_html(os.path.join(output_dir, f"glm_report_{file_suffix}_uncorrected_p001_cluster10.html"))
 
 
@@ -160,9 +175,13 @@ plt.show()
 plot_glass_brain(thresholded_map4, cmap="inferno", threshold=threshold4, vmin=threshold4,
                  title=f"z map {base_title}; fwer < .05")
 plt.show()
-report_v4 = make_glm_report(model=second_level_model_unpaired, contrasts="group",
-                            title=f"GLM report | {base_title} | Bonferroni FWER < .05",
-                            height_control="bonferroni", alpha=0.05, two_sided=False)
+report_v4 = second_level_model_unpaired.generate_report(
+    contrasts="group",
+    title=f"GLM report | {base_title} | Bonferroni FWER < .05",
+    height_control="bonferroni",
+    alpha=0.05,
+    two_sided=False,
+)
 report_v4.save_as_html(os.path.join(output_dir, f"glm_report_{file_suffix}_bonferroni_fwer05.html"))
 
 
