@@ -1,6 +1,6 @@
 import os
 import pandas as pd
-from PPPD.subjects import subs
+
 
 SUPPORTED_TASKS = ["rest"]
 SUPPORTED_FEATURES = ["seed_based", "falff"]
