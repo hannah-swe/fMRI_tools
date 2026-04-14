@@ -96,6 +96,7 @@ def _get_output_path(feature):
         raise ValueError(f"Unsupported feature: {feature}")
 
 
+# Gets mask path and load predefined mask file
 def _get_mask_file(predefined_mask):
     if predefined_mask not in SUPPORTED_MASKS:
         raise ValueError(f"Unsupported mask: {predefined_mask}")
