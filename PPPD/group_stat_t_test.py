@@ -3,7 +3,8 @@ matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 import os
 import nibabel as nib
-from PPPD import _get_data_path, _get_derivatives_path, _get_participants_tsv, _get_full_filename, _get_mask_filename, _get_output_path
+from PPPD import (_get_data_path, _get_derivatives_path, _get_participants_tsv, _get_full_filename, _get_mask_filename,
+                  _get_output_path, _get_mask_file)
 from PPPD.subjects import subs, subjects_to_exclude
 from nilearn.glm import threshold_stats_img
 from nilearn.glm.second_level import SecondLevelModel
@@ -25,8 +26,11 @@ seed = "Precuneus" # List of supported seeds: "InsulaId1L", "InsulaId1R", "Insul
                                     # "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",
                                     # "OperculumOP1L", "OperculumOP1R", "OperculumOP2L", "OperculumOP2R", "OperculumOP4L", "OperculumOP4R",
                                     # "Precuneus"
-threshold_mask = 0.8
 group_comparison = "HC>pat" # supported comparisons: "pat>HC", "HC>pat"
+# Mask settings:
+mask_strategy = "subject_based" # supported strategies: "subject_based", "predefined"
+predefined_mask = "dmn" # supported masks: "dmn"
+threshold_mask = 0.8 # only used if mask_strategy == "subject_based"
 
 
 # define the file suffix
@@ -36,6 +40,13 @@ if feature == "seed_based":
 else:
     base_title = f"{feature}; {group_comparison}"
     file_suffix = f"{feature}_{group_comparison}"
+if mask_strategy == "subject_based":
+    mask_label = f"submask-{threshold_mask}"
+    base_title = f"{base_title}; subject mask {threshold_mask}"
+else:
+    mask_label = predefined_mask
+    base_title = f"{base_title}; mask {predefined_mask}"
+file_suffix = f"{file_suffix}_{mask_label}"
 
 
 # path to halfpipe derivatives directory
@@ -51,14 +62,16 @@ deriv_dir = _get_derivatives_path(feature)
 # get output path
 output_dir = _get_output_path(feature)
 
+
 # read subjects' derivatives data
 derivative_nii = []
 included_subjects = []
-mask_imgs = []
+sub_mask_imgs = []
 
 for s in subs:
     if s in subjects_to_exclude:
         continue
+
     subject_id = f"sub-{s:03d}"
 
     # get statistical nifti maps
@@ -75,26 +88,37 @@ for s in subs:
         print(f"Error loading {img}: {e}")
         continue
 
-    # get mask images for the group mask
-    mask_filename = _get_mask_filename(subject_id, task, run, feature, seed)
-    mask = os.path.join(deriv_dir, subject_id, "func", f"task-{task}", mask_filename)
-    if not os.path.exists(mask):
-        print(f"Missing mask: {mask}")
-        continue
-    try:
-        nib.load(mask)
-        mask_imgs.append(mask)
-    except Exception as e:
-        print(f"Error loading mask {mask}: {e}")
-        continue
+    # get subject masks only if subject-based mask strategy is used
+    if mask_strategy == "subject_based":
+        sub_mask_filename = _get_mask_filename(subject_id, task, run, feature, seed)
+        sub_mask = os.path.join(deriv_dir, subject_id, "func", f"task-{task}", sub_mask_filename)
+        if not os.path.exists(sub_mask):
+            print(f"Missing mask: {sub_mask}")
+            continue
+        try:
+            nib.load(sub_mask)
+            sub_mask_imgs.append(sub_mask)
+        except Exception as e:
+            print(f"Error loading mask {sub_mask}: {e}")
+            continue
 
 print("Loaded images:", len(derivative_nii))
-print("Loaded masks:", len(mask_imgs))
 
 # get group mask
-group_mask = intersect_masks(mask_imgs, threshold=threshold_mask)
-save_mask = os.path.join(output_dir, "masks", f"group_mask_{file_suffix}.nii.gz")
-group_mask.to_filename(save_mask)
+if mask_strategy == "subject_based":
+     print("Loaded subjects' masks:", len(sub_mask_imgs))
+     if len(sub_mask_imgs) == 0:
+         raise ValueError("No subjects mask found.")
+     analysis_mask = intersect_masks(sub_mask_imgs, threshold=threshold_mask)
+     save_mask_path = os.path.join(output_dir, "masks", f"group_mask_{file_suffix}.nii.gz")
+     analysis_mask.to_filename(save_mask_path)
+elif mask_strategy == "predefined":
+    if predefined_mask is None:
+        raise ValueError("No predefined mask was loaded.")
+    analysis_mask = _get_mask_file(predefined_mask)
+else:
+    raise ValueError(f"Unknown mask strategy {mask_strategy}")
+
 
 # group mapping for contrast
 if group_comparison == "pat>HC":
@@ -123,7 +147,7 @@ print(unpaired_design_matrix.shape)
 # plt.show()
 
 # fit model (here: z-scores are used, also possible: 'z_score', 'stat', 'p_value', 'effect_size', 'effect_variance', 'all')
-second_level_model_unpaired = SecondLevelModel(mask_img=group_mask)
+second_level_model_unpaired = SecondLevelModel(mask_img=analysis_mask)
 second_level_model_unpaired = second_level_model_unpaired.fit(derivative_nii, design_matrix=unpaired_design_matrix)
 z_map = second_level_model_unpaired.compute_contrast("group", output_type='z_score')
 save_z_map = os.path.join(output_dir, "stat_maps", f"z_map_{file_suffix}.nii.gz")

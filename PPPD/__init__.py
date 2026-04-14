@@ -1,5 +1,6 @@
 import os
 import pandas as pd
+import nibabel as nib
 
 
 SUPPORTED_TASKS = ["rest"]
@@ -10,12 +11,14 @@ SUPPORTED_SEEDS = ["InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "Insu
                    "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",
                    "OperculumOP1L", "OperculumOP1R", "OperculumOP2L", "OperculumOP2R", "OperculumOP4L", "OperculumOP4R",
                    "Precuneus"]
+SUPPORTED_MASKS = ["dmn"]
 
 
 # Path to folder with all HALFpipe working directories
 analysis_path = '/data_wgs04/ag-sensomotorik/PPPD/analysis/'
 raw_data_path = '/data_wgs04/ag-sensomotorik/PPPD/data/all_subjects1/'
 output_path = '/data_wgs04/ag-sensomotorik/PPPD/analysis/group_level/'
+mask_path = '/data_wgs04/ag-sensomotorik/PPPD/masks/'
 
 
 # Gets the path for analysis folder based on the selected feature
@@ -91,3 +94,14 @@ def _get_output_path(feature):
         return os.path.join(output_path, "both_parts_falff")
     else:
         raise ValueError(f"Unsupported feature: {feature}")
+
+
+def _get_mask_file(predefined_mask):
+    if predefined_mask not in SUPPORTED_MASKS:
+        raise ValueError(f"Unsupported mask: {predefined_mask}")
+    mask_dir = os.path.join(mask_path, f"{predefined_mask}_mask_resampled.nii.gz")
+    if not os.path.exists(mask_dir):
+        raise FileNotFoundError(f"No resampled mask file found in {mask_dir}")
+    mask_file = nib.load(mask_dir)
+    print(f"Used mask file: {mask_dir}")
+    return mask_file
