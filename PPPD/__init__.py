@@ -4,7 +4,7 @@ import nibabel as nib
 
 
 SUPPORTED_TASKS = ["rest"]
-SUPPORTED_FEATURES = ["seed_based", "falff"]
+SUPPORTED_FEATURES = ["seed_based", "falff", "alff"]
 SUPPORTED_RUNS = ["run-01", "run-02"]
 SUPPORTED_SEEDS = ["InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
                    "InsulaOP3RAnat", "InsulaOP3Sphere",
@@ -29,6 +29,8 @@ def _get_data_path(feature):
         return os.path.join(analysis_path, "both_parts_seed1")
     if feature == "falff":
         return os.path.join(analysis_path, "both_parts_falff")
+    if feature == "alff":
+        return os.path.join(analysis_path, "both_parts_falff")
     return None
 
 
@@ -39,6 +41,8 @@ def _get_derivatives_path(feature):
     if feature == "seed_based":
         return os.path.join(analysis_path, "both_parts_seed1", "derivatives", "halfpipe")
     if feature == "falff":
+        return os.path.join(analysis_path, "both_parts_falff", "derivatives", "halfpipe")
+    if feature == "alff":
         return os.path.join(analysis_path, "both_parts_falff", "derivatives", "halfpipe")
     return None
 
@@ -67,6 +71,8 @@ def _get_full_filename(subject_id, task, run, feature, seed=None):
         filename = f"{subject_id}_task-{task}_{run}_feature-seedbased_seed-{seed}_stat-effect_statmap.nii.gz"
     elif feature == 'falff':
         filename = f"{subject_id}_task-{task}_{run}_feature-fALFF_falff.nii.gz"
+    elif feature == 'alff':
+        filename = f"{subject_id}_task-{task}_{run}_feature-fALFF_alff.nii.gz"
     else:
         raise ValueError(f"Unsupported feature: {feature}")
 
@@ -81,6 +87,8 @@ def _get_mask_filename(subject_id, task, run, feature, seed=None):
         mask_filename = f"{subject_id}_task-{task}_{run}_feature-seedbased_seed-{seed}_mask.nii.gz"
     elif feature == 'falff':
         mask_filename = f"{subject_id}_task-{task}_{run}_feature-fALFF_mask.nii.gz"
+    elif feature == 'alff':
+        mask_filename = f"{subject_id}_task-{task}_{run}_feature-fALFF_mask.nii.gz"
     else:
         raise ValueError(f"Unsupported feature: {feature}")
     return mask_filename
@@ -92,6 +100,8 @@ def _get_output_path(feature):
         return os.path.join(output_path, "both_parts_seed1")
     elif feature == "falff":
         return os.path.join(output_path, "both_parts_falff")
+    elif feature == "alff":
+        return os.path.join(output_path, "both_parts_alff")
     else:
         raise ValueError(f"Unsupported feature: {feature}")
 
