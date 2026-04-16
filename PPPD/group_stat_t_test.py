@@ -20,12 +20,12 @@ import warnings
 task = "rest"
 run = "run-01" # "run-01" == pre, "run-02" == post
 feature = "seed_based" # supported features: "falff", "seed_based"
-seed = "Precuneus" # List of supported seeds: "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
+seed = "InsulaId1L" # List of supported seeds: "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
                                     # "InsulaOP3RAnat", "InsulaOP3Sphere",
                                     # "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",
                                     # "OperculumOP1L", "OperculumOP1R", "OperculumOP2L", "OperculumOP2R", "OperculumOP4L", "OperculumOP4R",
                                     # "Precuneus"
-group_comparison = "HC>pat" # supported comparisons: "pat>HC", "HC>pat"
+group_comparison = "pat>HC" # supported comparisons: "pat>HC", "HC>pat"
 # mask settings
 mask_strategy = "subject_based" # supported strategies: "subject_based", "predefined"
 predefined_mask = "dmn" # supported masks: "dmn"
@@ -165,17 +165,19 @@ z_map.to_filename(save_z_map)
 
 
 # --- Significance tests with different versions of threshold and correction for multiple comparisons:
-# Version 1: abs(z) > 3.29 (equivalent to p < 0.001), cluster size > 10 voxels
-thresholded_map1 = threshold_img(z_map, threshold=3.29, cluster_threshold=10, two_sided=False)
+# Version 1: abs(z) > 3.09 (equivalent to p < 0.001 one-sided test), cluster size > 10 voxels
+thresholded_map1 = threshold_img(z_map, threshold=3.09, cluster_threshold=10, two_sided=False) # z(threshold)=3.09 for p=0.001 when testing one-sided; 3.29 for two-sided
 thr1_data = thresholded_map1.get_fdata()
 # plot thresholded maps if there are any voxels/clusters left
 if np.any(thr1_data != 0):
-    plot_stat_map(thresholded_map1, display_mode='mosaic', cmap="inferno", threshold=3.29, vmin=3.29,
-                  title=f"z map {base_title}; z > 3.29; clusters > 10 voxels")
+    plot_stat_map(thresholded_map1, display_mode='mosaic', cmap="inferno", threshold=3.09, vmin=3.09,
+                  title=f"z map {base_title}; z > 3.09; clusters > 10 voxels")
     plt.show()
-    display = plot_glass_brain(thresholded_map1, cmap="inferno", threshold=3.29, vmin=3.29,
-                               title=f"z map {base_title}; z > 3.29; clusters > 10 voxels")
-    display.savefig(os.path.join(output_dir, f"{file_suffix}_uncorrected_p001_cluster10.png"))
+    fig = plt.figure(figsize=(9,5))
+    display = plot_glass_brain(thresholded_map1, cmap="inferno", threshold=3.09, vmin=3.09,
+                               figure=fig, title=None)
+    display.frame_axes.figure.suptitle(f"z map {base_title}; z > 3.09; clusters > 10 voxels")
+    display.savefig(os.path.join(output_dir, "01_uncorrected", f"{file_suffix}_uncorrected_p001_cluster10.png"))
 else:
     print("No suprathreshold clusters; skipping plots.")
 # create model report as html regardless if suprathreshold clusters are left or not
@@ -183,59 +185,66 @@ with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     report_v1 = second_level_model_unpaired.generate_report(
         contrasts="group",
-        title=f"GLM report | {base_title} | z > 3.29, cluster > 10",
+        title=f"GLM report | {base_title} | z > 3.09, cluster > 10",
         height_control=None,
-        threshold=3.29,
+        threshold=3.09,
         cluster_threshold=10,
         two_sided=False,
         plot_type="glass",
     )
-report_v1.save_as_html(os.path.join(output_dir, f"glm_report_{file_suffix}_uncorrected_p001_cluster10.html"))
+report_v1.save_as_html(os.path.join(output_dir, "01_uncorrected", f"glm_report_{file_suffix}_uncorrected_p001_cluster10.html"))
 
 
-'''# Version 2: thresholding z-statistic image with a false positive rate < .001, cluster size > 10 voxels
-thresholded_map2, threshold2 = threshold_stats_img(z_map, alpha=0.001, height_control="fpr", cluster_threshold=10, two_sided=False)
-plot_stat_map(thresholded_map2, display_mode='mosaic', cmap="inferno", threshold=threshold2, vmin=threshold2,
-              title=f"z map {base_title}; fpr < .001; clusters > 10 voxels")
-plt.show()
-plot_glass_brain(thresholded_map2, cmap="inferno", threshold=threshold2, vmin=threshold2,
-                 title=f"z map {base_title}; fpr < .001; clusters > 10 voxels")
-plt.show()'''
+# Version 2: thresholding z-statistic image with a false discovery rate < .05, no cluster-level threshold
+thresholded_map2, threshold2 = threshold_stats_img(z_map, alpha=0.05, height_control="fdr", two_sided=False)
+print(f"The FDR=.05 threshold is {threshold2:.3g}")
+thr2_data = thresholded_map2.get_fdata()
+if np.any(thr2_data != 0):
+    plot_stat_map(thresholded_map2, display_mode='mosaic', cmap="inferno", threshold=threshold2, vmin=threshold2,
+                  title=f"z map {base_title}; fdr < .05")
+    plt.show()
+    fig = plt.figure(figsize=(9, 5))
+    display = plot_glass_brain(thresholded_map2, cmap="inferno", threshold=threshold2, vmin=threshold2,
+                               figure=fig, title=None)
+    display.frame_axes.figure.suptitle(f"z map {base_title}; fdr < .05")
+    display.savefig(os.path.join(output_dir, "02_fdr", f"{file_suffix}_fdr05.png"))
+else:
+    print("No suprathreshold clusters; skipping plots.")
+# create model report as html regardless if suprathreshold clusters are left or not
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    report_v2 = second_level_model_unpaired.generate_report(
+        contrasts="group",
+        title=f"GLM report | {base_title} | fdr < .05",
+        height_control="fdr",
+        two_sided=False,
+        plot_type="glass",
+    )
+report_v2.save_as_html(os.path.join(output_dir, "02_fdr", f"glm_report_{file_suffix}_fdr05.html"))
 
 
-'''# Version 3: FDR <.05 (False Discovery Rate) and no cluster-level threshold
-thresholded_map3, threshold3 = threshold_stats_img(z_map, alpha=0.05, height_control="fdr")
-print(f"The FDR=.05 threshold is {threshold3:.3g}")
-plot_stat_map(thresholded_map3, display_mode='mosaic', cmap="inferno", threshold=threshold3, vmin=threshold3,
-              title=f"z map {base_title}; fdr < .05")
-plt.show()
-plot_glass_brain(thresholded_map3, cmap="inferno", threshold=threshold3, vmin=threshold3,
-                 title=f"z map {base_title}; fdr < .05")
-plt.show()'''
-
-
-# Version 4: FWER <.05 (Family-Wise Error Rate) and no cluster-level threshold
-thresholded_map4, threshold4 = threshold_stats_img(z_map, alpha=0.05, height_control="bonferroni")
-print(f"The p<.05 Bonferroni-corrected threshold is {threshold4:.3g}")
-thr4_data = thresholded_map4.get_fdata()
+# Version 3: FWER <.05 (Family-Wise Error Rate) and no cluster-level threshold
+thresholded_map3, threshold3 = threshold_stats_img(z_map, alpha=0.05, height_control="bonferroni")
+print(f"The p<.05 Bonferroni-corrected threshold is {threshold3:.3g}")
+thr3_data = thresholded_map3.get_fdata()
 # plot thresholded maps if there are any voxels/clusters left
-if np.any(thr4_data != 0):
-    plot_stat_map(thresholded_map4, display_mode='mosaic', cmap="inferno", threshold=threshold4, vmin=threshold4,
+if np.any(thr3_data != 0):
+    plot_stat_map(thresholded_map3, display_mode='mosaic', cmap="inferno", threshold=threshold3, vmin=threshold3,
                   title=f"z map {base_title}; fwer < .05")
     plt.show()
-    display = plot_glass_brain(thresholded_map4, cmap="inferno", threshold=threshold4, vmin=threshold4,
+    display = plot_glass_brain(thresholded_map3, cmap="inferno", threshold=threshold3, vmin=threshold3,
                                title=f"z map {base_title}; fwer < .05")
-    display.savefig(os.path.join(output_dir, f"{file_suffix}_bonferroni_fwer05.png"))
+    display.savefig(os.path.join(output_dir, "03_bonferroni", f"{file_suffix}_bonferroni_fwer05.png"))
 else:
     print("No voxels survive Bonferroni correction; skipping plots.")
 # create model report as html regardless if suprathreshold clusters are left or not
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
-    report_v4 = second_level_model_unpaired.generate_report(
+    report_v3 = second_level_model_unpaired.generate_report(
         contrasts="group",
         title=f"GLM report | {base_title} | Bonferroni FWER < .05",
         height_control="bonferroni",
         alpha=0.05,
         two_sided=False,
     )
-report_v4.save_as_html(os.path.join(output_dir, f"glm_report_{file_suffix}_bonferroni_fwer05.html"))
+report_v3.save_as_html(os.path.join(output_dir, "03_bonferroni", f"glm_report_{file_suffix}_bonferroni_fwer05.html"))
