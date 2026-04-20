@@ -11,7 +11,7 @@ SUPPORTED_SEEDS = ["InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "Insu
                    "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",
                    "OperculumOP1L", "OperculumOP1R", "OperculumOP2L", "OperculumOP2R", "OperculumOP4L", "OperculumOP4R",
                    "Precuneus"]
-SUPPORTED_MASKS = ["dmn"]
+SUPPORTED_MASKS = ["dmn", "vvn"]
 
 
 # Path to folder with all HALFpipe working directories
