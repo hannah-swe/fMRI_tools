@@ -19,16 +19,16 @@ import warnings
 # --- Script configuration: ---
 task = "rest"
 run = "run-01" # "run-01" == pre, "run-02" == post
-feature = "seed_based" # supported features: "falff", "seed_based", "alff"
-seed = "InsulaId1L" # List of supported seeds: "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
+feature = "falff" # supported features: "falff", "seed_based", "alff"
+seed = None # List of supported seeds: "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
                                     # "InsulaOP3RAnat", "InsulaOP3Sphere",
                                     # "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",
                                     # "OperculumOP1L", "OperculumOP1R", "OperculumOP2L", "OperculumOP2R", "OperculumOP4L", "OperculumOP4R",
                                     # "Precuneus"
-group_comparison = "HC>pat" # supported comparisons: "pat>HC", "HC>pat"
+group_comparison = "pat>HC" # supported comparisons: "pat>HC", "HC>pat"
 # mask settings
-mask_strategy = "subject_based" # supported strategies: "subject_based", "predefined"
-predefined_mask = "dmn" # supported masks: "dmn", "vvn"
+mask_strategy = "predefined" # supported strategies: "subject_based", "predefined"
+predefined_mask = "vvn" # supported masks: "dmn", "vvn"
 threshold_mask = 0.8 # only used if mask_strategy == "subject_based"
 
 
