@@ -24,9 +24,9 @@ from nilearn.image import resample_to_img
 from nilearn import plotting
 
 # Configuration
-input_dir = "W:/PPPD/Auswertung_Part2/MRI/ROIs/ROI_masks"
-target_img_path = "W:/PPPD/Auswertung_Part2/MRI/ROIs/sub-01_task-rest_run-01_space-MNI152NLin2009cAsym_res-2_boldref.nii.gz"
-output_dir = "W:/PPPD/Auswertung_Part2/MRI/ROIs/final_rois"
+input_dir = "W:/PPPD/Auswertung_Part2/MRI/ROIs_Koordinaten/ROI_masks"
+target_img_path = "W:/PPPD/Auswertung_Part2/MRI/ROIs_Koordinaten/sub-01_task-rest_run-01_space-MNI152NLin2009cAsym_res-2_boldref.nii.gz"
+output_dir = "W:/PPPD/Auswertung_Part2/MRI/ROIs_Koordinaten/final_rois"
 
 ROI_MASKS_DIR = os.path.join(output_dir, "roi_masks")
 ROI_QC_DIR = os.path.join(output_dir, "roi_qc")
@@ -41,8 +41,6 @@ CUSTOM_NAME_MAP = {
     "ROI_Cerebellum_4_5_R_sphere_6_21_-37_-22.nii": "Cerebellum_IV_V_R_ROI_2009.nii",
     "ROI_Cerebellum_VIIa_crusI_Hem_L_MNI.nii": "Cerebellum_CrusI_L_ROI_2009.nii",
     "ROI_Cerebellum_VIIa_crusI_Hem_R_MNI.nii": "Cerebellum_CrusI_R_ROI_2009.nii",
-    "ROI_Cerebellum_VIIa_crusI_Verm_L_MNI.nii": "Cerebellum_CrusI_Vermis_L_ROI_2009.nii",
-    "ROI_Cerebellum_VIIa_crusI_Verm_R_MNI.nii": "Cerebellum_CrusI_Vermis_R_ROI_2009.nii",
     "ROI_Cerebellum_VIIb_sphere_6--37_-60_-51.nii": "Cerebellum_VIIb_ROI_2009.nii",
     "ROI_Vermis_Uvula_L_sphere_6-0_-55_-40.nii": "Vermis_Uvula_L_ROI_2009.nii",
     "ROI_Vermis_VII_sphere_6--3_-67_-28.nii": "Vermis_VII_ROI_2009.nii",
@@ -67,9 +65,11 @@ CUSTOM_NAME_MAP = {
     "ROI_Operculum_OP4_L_MNI.nii": "Operculum_OP4_L_ROI_2009.nii",
     "ROI_Operculum_OP4_R_MNI.nii": "Operculum_OP4_R_ROI_2009.nii",
 
-    "ROI_GyrusPraecentralis_Area4a_left_sphere_6_-12_-30_67.nii": "Precentral_Area4a_L_ROI_2009.nii",
-    "ROI_GyrusPraecentralis_Area4p_left_sphere_6_-38_-18_46.nii": "Precentral_Area4p_L_ROI_2009.nii",
-
+    "ROI_GyrusPraecentralis_Area4a_left_sphere_6_-12_-30_67.nii": "Precentral_Area4a_L_sphere_ROI_2009.nii",
+    "ROI_GyrusPraecentralis_Area4p_left_sphere_6_-38_-18_46.nii": "Precentral_Area4p_L_sphere_ROI_2009.nii",
+    "Area-4a_lh_MNI152.nii": "Precentral_Area4a_L_anat_ROI_2009.nii",
+    "Area-4p_lh_MNI152.nii": "Precentral_Area4p_L_anat_ROI_2009.nii",
+    
     "ROI_Supramarginalis_Left_sphere_6--51_-43_32.nii": "Supramarginal_L_ROI_2009.nii",
     "ROI_Supramarginalis_Left_sphere_6--58_-38_42.nii": "Supramarginal_L_v2_ROI_2009.nii",
     "ROI_Supramarginalis_Right_sphere_6-58_-35_24.nii": "Supramarginal_R_ROI_2009.nii",

@@ -7,6 +7,17 @@ roi_dir = Path("W:/PPPD/Auswertung_Part2/MRI/ROIs_Koordinaten/final_rois/roi_mas
 
 roi_files = sorted(roi_dir.glob("*.nii*"))
 
+used_files = [f for f in roi_files if "sphere" not in f.name.lower()]
+skipped_files = [f for f in roi_files if "sphere" in f.name.lower()]
+
+print(f"Used: {len(used_files)} ROI files")
+print(f"Skipped: {len(skipped_files)} ROI files")
+
+for f in skipped_files:
+    print("Skip:", f.name)
+
+roi_files = used_files
+
 roi_imgs = [load_img(f) for f in roi_files]
 ref_img = roi_imgs[0]
 
