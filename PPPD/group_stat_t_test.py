@@ -28,7 +28,7 @@ seed = "InsulaId1L" # List of supported seeds: "InsulaId1L", "InsulaId1R", "Insu
 group_comparison = "HC>pat" # supported comparisons: "pat>HC", "HC>pat"
 # mask settings
 mask_strategy = "subject_based" # supported strategies: "subject_based", "predefined"
-predefined_mask = "dmn" # supported masks: "dmn"
+predefined_mask = "dmn" # supported masks: "dmn", "vvn"
 threshold_mask = 0.8 # only used if mask_strategy == "subject_based"
 
 
