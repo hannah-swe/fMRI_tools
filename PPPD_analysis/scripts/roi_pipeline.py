@@ -45,6 +45,15 @@ CUSTOM_NAME_MAP = {
     "ROI_Vermis_Uvula_L_sphere_6-0_-55_-40.nii": "Vermis_Uvula_L_ROI_2009.nii",
     "ROI_Vermis_VII_sphere_6--3_-67_-28.nii": "Vermis_VII_ROI_2009.nii",
 
+    "Cerebellum-Ndentd_lh_MNI152.nii": "Cerebellum_Ndentd_L_ROI_2009.nii",
+    "Cerebellum-Ndentd_rh_MNI152.nii": "Cerebellum_Ndentd_R_ROI_2009.nii",
+    "Cerebellum-Ndentv_lh_MNI152.nii": "Cerebellum_Ndentv_L_ROI_2009.nii",
+    "Cerebellum-Ndentv_rh_MNI152.nii": "Cerebellum_Ndentv_R_ROI_2009.nii",
+    "Cerebellum-Nfast_lh_MNI152.nii": "Cerebellum_Nfast_L_ROI_2009.nii",
+    "Cerebellum-Nfast_rh_MNI152.nii": "Cerebellum_Nfast_R_ROI_2009.nii",
+    "Cerebellum-Ninterp_lh_MNI152.nii":"Cerebellum_Ninterp_L_ROI_2009.nii",
+    "Cerebellum-Ninterp_rh_MNI152.nii":"Cerebellum_Ninterp_R_ROI_2009.nii",
+
     "ROI_Insula_Id1_L_MNI.nii": "Insula_Id1_L_ROI_2009.nii",
     "ROI_Insula_Id1_R_MNI.nii": "Insula_Id1_R_ROI_2009.nii",
     "ROI_Insula_Ig1_L_MNI.nii": "Insula_Ig1_L_ROI_2009.nii",
@@ -58,6 +67,7 @@ CUSTOM_NAME_MAP = {
     "ROI_IPL_PFcm_R_MNI.nii": "IPL_PFcm_R_ROI_2009.nii",
     "ROI_IPL_PF_L_MNI.nii": "IPL_PF_L_ROI_2009.nii",
     "ROI_IPL_PF_R_MNI.nii": "IPL_PF_R_ROI_2009.nii",
+
     "ROI_Operculum_OP1_L_MNI.nii": "Operculum_OP1_L_ROI_2009.nii",
     "ROI_Operculum_OP1_R_MNI.nii": "Operculum_OP1_R_ROI_2009.nii",
     "ROI_Operculum_OP2_L_MNI.nii": "Operculum_OP2_L_ROI_2009.nii",
