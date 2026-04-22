@@ -4,12 +4,11 @@ import matplotlib.pyplot as plt
 import os
 import nibabel as nib
 from PPPD import (_get_data_path, _get_derivatives_path, _get_participants_tsv, _get_full_filename, _get_mask_filename,
-                  _get_output_path, _get_mask_file, _get_cluster_table_with_aal_labels)
+                  _get_output_path, _get_mask_file, _coord_to_label_and_distance, _get_cluster_table_with_aal_labels)
 from PPPD.subjects import subs, subjects_to_exclude
-from nilearn import datasets
 from nilearn.glm import threshold_stats_img
 from nilearn.glm.second_level import SecondLevelModel
-from nilearn.image import load_img, threshold_img
+from nilearn.image import threshold_img
 from nilearn.plotting import plot_stat_map, plot_design_matrix, plot_glass_brain
 from nilearn.masking import intersect_masks
 import numpy as np
@@ -182,13 +181,14 @@ if np.any(thr1_data != 0):
 else:
     print("No suprathreshold clusters; skipping plots.")
 # get cluster table with anatomical labels
-cluster_table1 = _get_cluster_table_with_aal_labels(
-    stat_img=thresholded_map1,
-    stat_threshold=3.09,
-    cluster_threshold=10,
-    two_sided=False
-)
-print(cluster_table1)
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    cluster_table1 = _get_cluster_table_with_aal_labels(
+        stat_img=thresholded_map1,
+        stat_threshold=3.09,
+        cluster_threshold=10,
+        two_sided=False
+    )
 # create model report as html regardless if suprathreshold clusters are left or not
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
@@ -219,6 +219,14 @@ if np.any(thr2_data != 0):
     display.savefig(os.path.join(output_dir, "02_fdr", f"{file_suffix}_fdr05.png"))
 else:
     print("No suprathreshold clusters; skipping plots.")
+# get cluster table with anatomical labels
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    cluster_table2 = _get_cluster_table_with_aal_labels(
+        stat_img=thresholded_map2,
+        stat_threshold=threshold2,
+        two_sided=False
+    )
 # create model report as html regardless if suprathreshold clusters are left or not
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
@@ -246,6 +254,14 @@ if np.any(thr3_data != 0):
     display.savefig(os.path.join(output_dir, "03_bonferroni", f"{file_suffix}_bonferroni_fwer05.png"))
 else:
     print("No voxels survive Bonferroni correction; skipping plots.")
+# get cluster table with anatomical labels
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    cluster_table3 = _get_cluster_table_with_aal_labels(
+        stat_img=thresholded_map3,
+        stat_threshold=threshold3,
+        two_sided=False
+    )
 # create model report as html regardless if suprathreshold clusters are left or not
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")

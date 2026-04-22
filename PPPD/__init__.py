@@ -5,6 +5,7 @@ import numpy as np
 import xml.etree.ElementTree as ET
 from nilearn.image import load_img
 from nilearn.reporting import get_clusters_table
+from scipy.spatial.distance import cdist
 
 
 SUPPORTED_TASKS = ["rest"]
@@ -162,8 +163,29 @@ def _load_local_aal_atlas(aal_dir=aal_path):
     return atlas_img, atlas_data, value_to_label
 
 
+# Compute minimal Euclidean distance (mm) from a coordinate to all voxels belonging to a given atlas region
+def _distance_to_region(x, y, z, atlas_img, atlas_data, target_value):
+    # alle Voxels der Region finden
+    region_voxels = np.argwhere(atlas_data == target_value)
+
+    if region_voxels.size == 0:
+        return np.nan
+
+    # voxel → MNI transformieren
+    region_coords = np.dot(
+        atlas_img.affine,
+        np.c_[region_voxels, np.ones(len(region_voxels))].T
+    ).T[:, :3]
+
+    peak = np.array([[x, y, z]])
+
+    # minimale Distanz
+    distances = cdist(peak, region_coords)
+    return float(distances.min())
+
+
 # Convert MNI coordinates to nearest AAL atlas label.
-def _coord_to_aal_label(x, y, z, atlas_img, atlas_data, value_to_label):
+def _coord_to_label_and_distance(x, y, z, atlas_img, atlas_data, value_to_label):
     xyz_h = np.array([x, y, z, 1.0])
     ijk = np.linalg.inv(atlas_img.affine).dot(xyz_h)[:3]
     ijk = np.round(ijk).astype(int)
@@ -174,9 +196,22 @@ def _coord_to_aal_label(x, y, z, atlas_img, atlas_data, value_to_label):
     atlas_value = atlas_data[tuple(ijk)]
 
     if atlas_value == 0:
-        return "no_label"
+        # keine Region → nächstgelegene suchen
+        possible_values = list(value_to_label.keys())
+        min_dist = np.inf
+        best_label = "no_label"
 
-    return value_to_label.get(int(atlas_value), f"unknown_label_{int(atlas_value)}")
+        for val in possible_values:
+            d = _distance_to_region(x, y, z, atlas_img, atlas_data, val)
+            if d < min_dist:
+                min_dist = d
+                best_label = value_to_label[val]
+
+        return best_label, min_dist
+
+    else:
+        label = value_to_label.get(int(atlas_value), "unknown")
+        return label, 0.0
 
 
 # Extract cluster table from a stat image and annotate peak coordinates with AAL atlas labels
@@ -216,10 +251,12 @@ def _get_cluster_table_with_aal_labels(
 
     x_col, y_col, z_col = coord_cols
 
-    clusters_table["aal_label"] = clusters_table.apply(
-        lambda row: _coord_to_aal_label(
-            row[x_col], row[y_col], row[z_col],
-            atlas_img, atlas_data, value_to_label
+    clusters_table[["aal_label", "distance_mm"]] = clusters_table.apply(
+        lambda row: pd.Series(
+            _coord_to_label_and_distance(
+                row[x_col], row[y_col], row[z_col],
+                atlas_img, atlas_data, value_to_label
+            )
         ),
         axis=1
     )
