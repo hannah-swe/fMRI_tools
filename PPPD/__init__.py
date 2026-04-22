@@ -1,6 +1,10 @@
 import os
 import pandas as pd
 import nibabel as nib
+import numpy as np
+from nilearn import datasets
+from nilearn.image import load_img
+from nilearn.reporting import get_clusters_table
 
 
 SUPPORTED_TASKS = ["rest"]
@@ -116,3 +120,82 @@ def _get_mask_file(predefined_mask):
     mask_file = nib.load(mask_dir)
     print(f"Used mask file: {mask_dir}")
     return mask_file
+
+
+# Extract cluster table from a stat image and annotate peak coordinates with AAL atlas labels
+def _get_cluster_table_with_aal_labels(stat_img, stat_threshold, cluster_threshold=0, two_sided=False, min_distance=8.0,
+                                      aal_version="3v2", atlas_img=None, atlas_labels=None, atlas_indices=None):
+    """
+    Parameters
+    ----------
+    stat_img : Niimg-like object
+        Thresholded or unthresholded statistical image.
+    stat_threshold : float
+        Cluster-forming threshold passed to nilearn.reporting.get_clusters_table.
+    cluster_threshold : int, default=0
+        Minimum cluster size in voxels.
+    two_sided : bool, default=False
+        Whether to extract positive and negative clusters.
+    min_distance : float, default=8.0
+        Minimum distance between subpeaks in mm.
+    aal_version : str, default="3v2"
+        AAL atlas version for nilearn.datasets.fetch_atlas_aal.
+    atlas_img : Niimg-like or None
+        Optional preloaded atlas image. If None, AAL is fetched automatically.
+    atlas_labels : list[str] or None
+        Optional atlas labels.
+    atlas_indices : list[str] or None
+        Optional atlas indices as provided by fetch_atlas_aal().
+
+    Returns
+    -------
+    pandas.DataFrame
+        Cluster table with an added 'aal_label' column.
+    """
+    # Cluster table from Nilearn
+    clusters_table = get_clusters_table(stat_img, stat_threshold=stat_threshold, cluster_threshold=cluster_threshold,
+                                        two_sided=two_sided, min_distance=min_distance, return_label_maps=False)
+    if clusters_table.empty:
+        clusters_table["aal_label"] = pd.Series(dtype="object")
+        return clusters_table
+
+    # Load AAL atlas if not provided
+    if atlas_img is None or atlas_labels is None or atlas_indices is None:
+        aal = datasets.fetch_atlas_aal(version=aal_version)
+        atlas_img = load_img(aal.maps)
+        atlas_labels = list(aal.labels)
+        atlas_indices = list(aal.indices)
+
+    # Build robust AAL value -> label mapping
+    # Important because AAL map values are not guaranteed to match label list indices
+    atlas_data = atlas_img.get_fdata()
+    value_to_label = {int(idx): label for idx, label in zip(atlas_indices, atlas_labels)}
+
+    # Convert MNI coordinate to atlas label using nearest voxel lookup
+    def coord_to_aal_label(x, y, z):
+        xyz_h = np.array([x, y, z, 1.0])
+        ijk = np.linalg.inv(atlas_img.affine).dot(xyz_h)[:3]
+        ijk = np.round(ijk).astype(int)
+        # Bounds check
+        if np.any(ijk < 0) or np.any(ijk >= atlas_data.shape):
+            return "out_of_bounds"
+        atlas_value = atlas_data[tuple(ijk)]
+        # Background
+        if atlas_value == 0:
+            return "no_label"
+        return value_to_label.get(int(atlas_value), f"unknown_label_{int(atlas_value)}")
+
+    # Add anatomical label for each peak row; get_clusters_table usually provides X, Y, Z columns
+    coord_cols = None
+    for candidate in [("X", "Y", "Z"), ("x", "y", "z")]:
+        if all(col in clusters_table.columns for col in candidate):
+            coord_cols = candidate
+            break
+    if coord_cols is None:
+        raise ValueError(
+            f"Could not find coordinate columns in clusters table. Available columns: {list(clusters_table.columns)}"
+        )
+    x_col, y_col, z_col = coord_cols
+    clusters_table["aal_label"] = clusters_table.apply(lambda row: coord_to_aal_label(row[x_col], row[y_col], row[z_col]),
+                                                       axis=1)
+    return clusters_table

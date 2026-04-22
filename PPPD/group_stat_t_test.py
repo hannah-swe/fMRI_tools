@@ -4,11 +4,12 @@ import matplotlib.pyplot as plt
 import os
 import nibabel as nib
 from PPPD import (_get_data_path, _get_derivatives_path, _get_participants_tsv, _get_full_filename, _get_mask_filename,
-                  _get_output_path, _get_mask_file)
+                  _get_output_path, _get_mask_file, _get_cluster_table_with_aal_labels)
 from PPPD.subjects import subs, subjects_to_exclude
+from nilearn import datasets
 from nilearn.glm import threshold_stats_img
 from nilearn.glm.second_level import SecondLevelModel
-from nilearn.image import threshold_img
+from nilearn.image import load_img, threshold_img
 from nilearn.plotting import plot_stat_map, plot_design_matrix, plot_glass_brain
 from nilearn.masking import intersect_masks
 import numpy as np
@@ -16,18 +17,18 @@ import pandas as pd
 import warnings
 
 
-# --- Script configuration: ---
+# --- Script configuration:
 task = "rest"
 run = "run-01" # "run-01" == pre, "run-02" == post
-feature = "falff" # supported features: "falff", "seed_based", "alff"
-seed = None # List of supported seeds: "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
+feature = "seed_based" # supported features: "falff", "seed_based", "alff"
+seed = "InsulaOP3RAnat" # List of supported seeds: "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
                                     # "InsulaOP3RAnat", "InsulaOP3Sphere",
                                     # "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",
                                     # "OperculumOP1L", "OperculumOP1R", "OperculumOP2L", "OperculumOP2R", "OperculumOP4L", "OperculumOP4R",
                                     # "Precuneus"
 group_comparison = "pat>HC" # supported comparisons: "pat>HC", "HC>pat"
 # mask settings
-mask_strategy = "predefined" # supported strategies: "subject_based", "predefined"
+mask_strategy = "subject_based" # supported strategies: "subject_based", "predefined"
 predefined_mask = "vvn" # supported masks: "dmn", "vvn"
 threshold_mask = 0.8 # only used if mask_strategy == "subject_based"
 
@@ -140,6 +141,13 @@ else:
     raise ValueError(f"Unknown group comparison: {group_comparison}")
 
 
+# --- Load aal atlas for anatomical labeling of clusters:
+aal = datasets.fetch_atlas_aal(version="3v2")
+atlas_img = load_img(aal.maps)
+atlas_labels = list(aal.labels)
+atlas_indices = list(aal.indices)
+
+
 # --- Compute two sample t-test unpaired:
 # get design matrix and plot it
 design_df = participants_df[participants_df["subject_id"].isin(included_subjects)].copy()
@@ -180,6 +188,17 @@ if np.any(thr1_data != 0):
     display.savefig(os.path.join(output_dir, "01_uncorrected", f"{file_suffix}_uncorrected_p001_cluster10.png"))
 else:
     print("No suprathreshold clusters; skipping plots.")
+# get cluster table with anatomical labels
+cluster_table1 = _get_cluster_table_with_aal_labels(
+    stat_img=thresholded_map1,
+    stat_threshold=3.09,
+    cluster_threshold=10,
+    two_sided=False,
+    atlas_img=atlas_img,
+    atlas_labels=atlas_labels,
+    atlas_indices=atlas_indices,
+)
+print(cluster_table1)
 # create model report as html regardless if suprathreshold clusters are left or not
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
