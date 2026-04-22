@@ -127,15 +127,13 @@ def _get_mask_file(predefined_mask):
 # Load manually downloaded AAL atlas (NIfTI + XML) from local directory
 def _load_local_aal_atlas(aal_dir=aal_path):
     """
-    Returns
-    -------
+    Returns:
     atlas_img : nibabel image
     atlas_data : np.ndarray
     value_to_label : dict[int, str]
     """
     nii_path = os.path.join(aal_dir, "AAL3v1.nii")
     xml_path = os.path.join(aal_dir, "AAL3v1.xml")
-
     if not os.path.exists(nii_path):
         raise FileNotFoundError(f"AAL NIfTI not found: {nii_path}")
     if not os.path.exists(xml_path):
@@ -143,7 +141,6 @@ def _load_local_aal_atlas(aal_dir=aal_path):
 
     atlas_img = load_img(nii_path)
     atlas_data = atlas_img.get_fdata()
-
     tree = ET.parse(xml_path)
     root = tree.getroot()
 
@@ -151,35 +148,27 @@ def _load_local_aal_atlas(aal_dir=aal_path):
     for label in root.findall(".//label"):
         index_elem = label.find("index")
         name_elem = label.find("name")
-
         if index_elem is None or name_elem is None:
             continue
-
         value_to_label[int(index_elem.text)] = name_elem.text.strip()
-
     if not value_to_label:
         raise ValueError(f"No labels could be parsed from XML: {xml_path}")
-
     return atlas_img, atlas_data, value_to_label
 
 
 # Compute minimal Euclidean distance (mm) from a coordinate to all voxels belonging to a given atlas region
 def _distance_to_region(x, y, z, atlas_img, atlas_data, target_value):
-    # alle Voxels der Region finden
     region_voxels = np.argwhere(atlas_data == target_value)
-
     if region_voxels.size == 0:
         return np.nan
-
-    # voxel → MNI transformieren
+    # transform voxel to MNI
     region_coords = np.dot(
         atlas_img.affine,
         np.c_[region_voxels, np.ones(len(region_voxels))].T
     ).T[:, :3]
 
     peak = np.array([[x, y, z]])
-
-    # minimale Distanz
+    # minimal distance
     distances = cdist(peak, region_coords)
     return float(distances.min())
 
@@ -189,40 +178,29 @@ def _coord_to_label_and_distance(x, y, z, atlas_img, atlas_data, value_to_label)
     xyz_h = np.array([x, y, z, 1.0])
     ijk = np.linalg.inv(atlas_img.affine).dot(xyz_h)[:3]
     ijk = np.round(ijk).astype(int)
-
     if np.any(ijk < 0) or np.any(ijk >= atlas_data.shape):
         return "out_of_bounds"
 
     atlas_value = atlas_data[tuple(ijk)]
-
     if atlas_value == 0:
-        # keine Region → nächstgelegene suchen
+        # no region; get nearest region
         possible_values = list(value_to_label.keys())
         min_dist = np.inf
         best_label = "no_label"
-
         for val in possible_values:
             d = _distance_to_region(x, y, z, atlas_img, atlas_data, val)
             if d < min_dist:
                 min_dist = d
                 best_label = value_to_label[val]
-
         return best_label, min_dist
-
     else:
         label = value_to_label.get(int(atlas_value), "unknown")
         return label, 0.0
 
 
 # Extract cluster table from a stat image and annotate peak coordinates with AAL atlas labels
-def _get_cluster_table_with_aal_labels(
-    stat_img,
-    stat_threshold,
-    cluster_threshold=0,
-    two_sided=False,
-    min_distance=8.0,
-    aal_dir=aal_path,
-):
+def _get_cluster_table_with_aal_labels(stat_img, stat_threshold, cluster_threshold=0, two_sided=False,
+                                       min_distance=8.0, aal_dir=aal_path):
     clusters_table = get_clusters_table(
         stat_img,
         stat_threshold=stat_threshold,
@@ -231,19 +209,16 @@ def _get_cluster_table_with_aal_labels(
         min_distance=min_distance,
         return_label_maps=False,
     )
-
     if clusters_table.empty:
         clusters_table["aal_label"] = pd.Series(dtype="object")
         return clusters_table
 
     atlas_img, atlas_data, value_to_label = _load_local_aal_atlas(aal_dir=aal_dir)
-
     coord_cols = None
     for candidate in [("X", "Y", "Z"), ("x", "y", "z")]:
         if all(col in clusters_table.columns for col in candidate):
             coord_cols = candidate
             break
-
     if coord_cols is None:
         raise ValueError(
             f"Could not find coordinate columns in cluster table. Available columns: {list(clusters_table.columns)}"
@@ -251,14 +226,11 @@ def _get_cluster_table_with_aal_labels(
 
     x_col, y_col, z_col = coord_cols
 
-    clusters_table[["aal_label", "distance_mm"]] = clusters_table.apply(
-        lambda row: pd.Series(
+    clusters_table[["aal_label", "distance_mm"]] = clusters_table.apply(lambda row: pd.Series(
             _coord_to_label_and_distance(
                 row[x_col], row[y_col], row[z_col],
                 atlas_img, atlas_data, value_to_label
             )
         ),
-        axis=1
-    )
-
+        axis=1)
     return clusters_table
