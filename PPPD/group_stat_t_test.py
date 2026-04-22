@@ -19,8 +19,9 @@ import warnings
 # --- Script configuration:
 task = "rest"
 run = "run-01" # "run-01" == pre, "run-02" == post
-feature = "seed_based" # supported features: "falff", "seed_based", "alff"
-seed = "InsulaOP3RAnat" # List of supported seeds: "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
+feature = "falff" # supported features: "falff", "seed_based", "alff"
+seed = None # List of supported seeds:
+                                    # "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
                                     # "InsulaOP3RAnat", "InsulaOP3Sphere",
                                     # "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",
                                     # "OperculumOP1L", "OperculumOP1R", "OperculumOP2L", "OperculumOP2R", "OperculumOP4L", "OperculumOP4R",
