@@ -141,13 +141,6 @@ else:
     raise ValueError(f"Unknown group comparison: {group_comparison}")
 
 
-# --- Load aal atlas for anatomical labeling of clusters:
-aal = datasets.fetch_atlas_aal(version="3v2")
-atlas_img = load_img(aal.maps)
-atlas_labels = list(aal.labels)
-atlas_indices = list(aal.indices)
-
-
 # --- Compute two sample t-test unpaired:
 # get design matrix and plot it
 design_df = participants_df[participants_df["subject_id"].isin(included_subjects)].copy()
@@ -193,10 +186,7 @@ cluster_table1 = _get_cluster_table_with_aal_labels(
     stat_img=thresholded_map1,
     stat_threshold=3.09,
     cluster_threshold=10,
-    two_sided=False,
-    atlas_img=atlas_img,
-    atlas_labels=atlas_labels,
-    atlas_indices=atlas_indices,
+    two_sided=False
 )
 print(cluster_table1)
 # create model report as html regardless if suprathreshold clusters are left or not
