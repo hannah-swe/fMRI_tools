@@ -4,11 +4,11 @@ import matplotlib.pyplot as plt
 import os
 import nibabel as nib
 from PPPD import (_get_data_path, _get_derivatives_path, _get_participants_tsv, _get_full_filename, _get_mask_filename,
-                  _get_output_path, _get_mask_file, _coord_to_label_and_distance, _get_cluster_table_with_aal_labels)
+                  _get_output_path, _get_mask_file, _get_cluster_table_with_aal_labels)
 from PPPD.subjects import subs, subjects_to_exclude
 from nilearn.glm import threshold_stats_img
-from nilearn.glm.second_level import SecondLevelModel
-from nilearn.image import threshold_img
+from nilearn.glm.second_level import SecondLevelModel, non_parametric_inference
+from nilearn.image import threshold_img, math_img
 from nilearn.plotting import plot_stat_map, plot_design_matrix, plot_glass_brain
 from nilearn.masking import intersect_masks
 import numpy as np
@@ -165,9 +165,10 @@ save_z_map = os.path.join(output_dir, "stat_maps", f"z_map_{file_suffix}.nii.gz"
 z_map.to_filename(save_z_map)
 
 
-# --- Significance tests with different versions of threshold and correction for multiple comparisons:
+# --- PARAMETRIC TESTS with different versions of threshold and correction for multiple comparisons:
 # Version 1: abs(z) > 3.09 (equivalent to p < 0.001 one-sided test), cluster size > 10 voxels
-thresholded_map1 = threshold_img(z_map, threshold=3.09, cluster_threshold=10, two_sided=False) # z(threshold)=3.09 for p=0.001 when testing one-sided; 3.29 for two-sided
+# z(threshold)=3.09 for p=0.001 when testing one-sided; 3.29 for two-sided
+thresholded_map1 = threshold_img(z_map, threshold=3.09, cluster_threshold=10, two_sided=False)
 thr1_data = thresholded_map1.get_fdata()
 # plot thresholded maps if there are any voxels/clusters left
 if np.any(thr1_data != 0):
@@ -204,7 +205,7 @@ with warnings.catch_warnings():
     )
 report_v1.save_as_html(os.path.join(output_dir, "01_uncorrected", f"glm_report_{file_suffix}_uncorrected_p001_cluster10.html"))
 
-
+'''
 # Version 2: thresholding z-statistic image with a false discovery rate < .05, no cluster-level threshold
 thresholded_map2, threshold2 = threshold_stats_img(z_map, alpha=0.05, height_control="fdr", two_sided=False)
 print(f"The FDR=.05 threshold is {threshold2:.3g}")
@@ -239,8 +240,9 @@ with warnings.catch_warnings():
         plot_type="glass",
     )
 report_v2.save_as_html(os.path.join(output_dir, "02_fdr", f"glm_report_{file_suffix}_fdr05.html"))
+'''
 
-
+'''
 # Version 3: FWER <.05 (Family-Wise Error Rate) and no cluster-level threshold
 thresholded_map3, threshold3 = threshold_stats_img(z_map, alpha=0.05, height_control="bonferroni")
 print(f"The p<.05 Bonferroni-corrected threshold is {threshold3:.3g}")
@@ -274,3 +276,75 @@ with warnings.catch_warnings():
         two_sided=False,
     )
 report_v3.save_as_html(os.path.join(output_dir, "03_bonferroni", f"glm_report_{file_suffix}_bonferroni_fwer05.html"))
+'''
+
+# --- NON-PARAMETRIC TESTS: permutation inference with cluster-level correction:
+# threshold is in p-scale, not z-scale; threshold=0.001 corresponds to a cluster-forming threshold of p < .001
+n_perm = 5000
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    perm_out = non_parametric_inference(
+        second_level_input=derivative_nii,
+        design_matrix=unpaired_design_matrix,
+        second_level_contrast="group",
+        mask=analysis_mask,
+        model_intercept=False,   # intercept is already in the design matrix
+        n_perm=n_perm,
+        two_sided_test=False,
+        threshold=0.001,         # cluster-forming threshold in p-scale
+        n_jobs=40,                # adapt to your system
+        verbose=1,
+    )
+# Save raw permutation outputs
+# perm_out["t"].to_filename(os.path.join(output_dir, "04_nonparametric", f"t_map_{file_suffix}_perm.nii.gz"))
+# perm_out["logp_max_t"].to_filename(os.path.join(output_dir, "04_nonparametric", f"logp_max_t_{file_suffix}_perm.nii.gz"))
+# perm_out["logp_max_size"].to_filename(os.path.join(output_dir, "04_nonparametric", f"logp_max_size_{file_suffix}_perm.nii.gz"))
+# perm_out["logp_max_mass"].to_filename(os.path.join(output_dir, "04_nonparametric", f"logp_max_mass_{file_suffix}_perm.nii.gz"))
+
+# Convert corrected -log10(p) maps into thresholded views (corrected p < .05  <=>  -log10(p) > 1.30103)
+neglog_alpha_05 = -np.log10(0.05)
+logp_size_thr = threshold_img(perm_out["logp_max_size"], threshold=neglog_alpha_05, two_sided=False)
+logp_mass_thr = threshold_img(perm_out["logp_max_mass"], threshold=neglog_alpha_05, two_sided=False)
+logp_voxel_thr = threshold_img(perm_out["logp_max_t"], threshold=neglog_alpha_05, two_sided=False)
+
+# Plot voxel-level corrected map
+if np.any(logp_voxel_thr.get_fdata() != 0):
+    fig = plt.figure(figsize=(9, 5))
+    display = plot_glass_brain(logp_voxel_thr, cmap="inferno", threshold=neglog_alpha_05, vmin=neglog_alpha_05,
+                               figure=fig, title=None, colorbar=True)
+    display.frame_axes.figure.suptitle(f"Permutation test voxel-level FWER \n {base_title} | corrected p < .05")
+    # display.savefig(os.path.join(output_dir, "04_nonparametric", f"{file_suffix}_perm_voxel_fwer05.png"))
+else:
+    print("No voxels survive permutation voxel-level FWER correction.")
+
+# Plot cluster-size corrected map
+if np.any(logp_size_thr.get_fdata() != 0):
+    fig = plt.figure(figsize=(9, 5))
+    display = plot_glass_brain(logp_size_thr, cmap="inferno", threshold=neglog_alpha_05, vmin=neglog_alpha_05,
+                               figure=fig, title=None, colorbar=True)
+    display.frame_axes.figure.suptitle(f"Permutation test cluster-size FWER \n {base_title} | corrected p < .05")
+    display.savefig(os.path.join(output_dir, "04_nonparametric", f"{file_suffix}_perm_clustersize_fwer05.png"))
+else:
+    print("No clusters survive permutation cluster-size FWER correction.")
+
+# --- Plot cluster-mass corrected map
+if np.any(logp_mass_thr.get_fdata() != 0):
+    fig = plt.figure(figsize=(9, 5))
+    display = plot_glass_brain(logp_mass_thr, cmap="inferno", threshold=neglog_alpha_05, vmin=neglog_alpha_05,
+                               figure=fig, title=None, colorbar=True)
+    display.frame_axes.figure.suptitle(f"Permutation test cluster-mass FWER \n {base_title} | corrected p < .05")
+    display.savefig(os.path.join(output_dir, "04_nonparametric", f"{file_suffix}_perm_clustermass_fwer05.png"))
+else:
+    print("No clusters survive permutation cluster-mass FWER correction.")
+
+# Optional: create a binary/significant map from cluster-size corrected output
+# This is useful if you want to extract cluster tables from the corrected map.
+sig_cluster_size_map = math_img(f"img > {neglog_alpha_05}", img=perm_out["logp_max_size"])
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    cluster_table_perm_size = _get_cluster_table_with_aal_labels(
+        stat_img=sig_cluster_size_map,
+        stat_threshold=0.5,   # binary image after math_img
+        cluster_threshold=0,
+        two_sided=False,
+    )
