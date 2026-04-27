@@ -19,8 +19,8 @@ import warnings
 # --- Script configuration:
 task = "rest"
 run = "run-01" # "run-01" == pre, "run-02" == post
-feature = "falff" # supported features: "falff", "seed_based", "alff"
-seed = None # List of supported seeds:
+feature = "seed_based" # supported features: "falff", "seed_based", "alff"
+seed = "OperculumOP1L" # List of supported seeds:
                                     # "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
                                     # "InsulaOP3RAnat", "InsulaOP3Sphere",
                                     # "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",
@@ -280,7 +280,7 @@ report_v3.save_as_html(os.path.join(output_dir, "03_bonferroni", f"glm_report_{f
 
 # --- NON-PARAMETRIC TESTS: permutation inference with cluster-level correction:
 # threshold is in p-scale, not z-scale; threshold=0.001 corresponds to a cluster-forming threshold of p < .001
-n_perm = 5000
+n_perm = 10000
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     perm_out = non_parametric_inference(
@@ -330,7 +330,7 @@ else:
 # --- Plot cluster-mass corrected map
 if np.any(logp_mass_thr.get_fdata() != 0):
     fig = plt.figure(figsize=(9, 5))
-    display = plot_glass_brain(logp_mass_thr, cmap="inferno", threshold=neglog_alpha_05, vmin=neglog_alpha_05,
+    display = plot_glass_brain(logp_mass_thr, cmap="inferno", threshold=neglog_alpha_05, vmin=neglog_alpha_05, vmax=2.2,
                                figure=fig, title=None, colorbar=True)
     display.frame_axes.figure.suptitle(f"Permutation test cluster-mass FWER \n {base_title} | corrected p < .05")
     display.savefig(os.path.join(output_dir, "04_nonparametric", f"{file_suffix}_perm_clustermass_fwer05.png"))
@@ -339,7 +339,7 @@ else:
 
 # Optional: create a binary/significant map from cluster-size corrected output
 # This is useful if you want to extract cluster tables from the corrected map.
-sig_cluster_size_map = math_img(f"img > {neglog_alpha_05}", img=perm_out["logp_max_size"])
+sig_cluster_size_map = math_img(f"img > {neglog_alpha_05}", img=perm_out["logp_max_mass"])
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     cluster_table_perm_size = _get_cluster_table_with_aal_labels(
