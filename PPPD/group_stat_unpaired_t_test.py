@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import os
 import nibabel as nib
 from PPPD import (_get_data_path, _get_derivatives_path, _get_participants_tsv, _get_full_filename, _get_mask_filename,
-                  _get_output_path, _get_mask_file, _get_cluster_table_with_aal_labels)
+                  _get_output_path, _get_mask_file, _get_cluster_table_with_aal_labels, _get_cluster_table_with_juelich_prob_labels)
 from PPPD.subjects import subs, subjects_to_exclude
 from nilearn.glm import threshold_stats_img
 from nilearn.glm.second_level import SecondLevelModel, non_parametric_inference
@@ -20,7 +20,7 @@ import warnings
 task = "rest"
 run = "run-01" # "run-01" == pre, "run-02" == post
 feature = "seed_based" # supported features: "falff", "seed_based", "alff"
-seed = "OperculumOP1L" # List of supported seeds:
+seed = "OperculumOP4L" # List of supported seeds:
                                     # "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
                                     # "InsulaOP3RAnat", "InsulaOP3Sphere",
                                     # "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",
@@ -344,8 +344,9 @@ if np.any(logp_mass_thr.get_fdata() != 0):
 else:
     print("No clusters survive permutation cluster-mass FWER correction.")
 
-# Optional: create a binary/significant map from cluster-size corrected output
-# This is useful if you want to extract cluster tables from the corrected map.
+
+# --- Get cluster table with aal and julich brain atlas
+# create a binary/significant map from cluster-size corrected output
 sig_cluster_size_map = math_img(f"img > {neglog_alpha_05}", img=perm_out["logp_max_mass"])
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
@@ -355,3 +356,28 @@ with warnings.catch_warnings():
         cluster_threshold=0,
         two_sided=False,
     )
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    cluster_table_perm_size_juelich = _get_cluster_table_with_juelich_prob_labels(
+        stat_img=sig_cluster_size_map,
+        stat_threshold=0.5,
+        cluster_threshold=0,
+        two_sided=False,
+        atlas_name="prob-2mm",
+        top_n=5,
+        min_prob=0.0
+    )
+cols_aal = ["Cluster ID", "X", "Y", "Z", "Cluster Size (mm3)", "aal_label", "distance_mm"]
+cols_juelich = ["Cluster ID", "juelich_top_probs"]
+cluster_table_combined = (cluster_table_perm_size[cols_aal]
+    .merge(
+        cluster_table_perm_size_juelich[cols_juelich],
+        on="Cluster ID",
+        how="left"
+    )
+    .rename(columns={
+        "Cluster ID": "Cluster",
+        "Cluster Size (mm3)": "Size (mm3)",
+        "juelich_top_probs": "juelich_label"
+    })
+)
