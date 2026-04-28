@@ -31,6 +31,8 @@ group_comparison = "pat>HC" # supported comparisons: "pat>HC", "HC>pat"
 mask_strategy = "subject_based" # supported strategies: "subject_based", "predefined"
 predefined_mask = "vvn" # supported masks: "dmn", "vvn"
 threshold_mask = 0.8 # only used if mask_strategy == "subject_based"
+# number of permutations for non-parametric cluster-based permutation test
+n_perm = 10000
 
 
 # --- Define the file suffix
@@ -280,7 +282,6 @@ report_v3.save_as_html(os.path.join(output_dir, "03_bonferroni", f"glm_report_{f
 
 # --- NON-PARAMETRIC TESTS: permutation inference with cluster-level correction:
 # threshold is in p-scale, not z-scale; threshold=0.001 corresponds to a cluster-forming threshold of p < .001
-n_perm = 10000
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     perm_out = non_parametric_inference(
@@ -329,8 +330,14 @@ else:
 
 # --- Plot cluster-mass corrected map
 if np.any(logp_mass_thr.get_fdata() != 0):
+    data = logp_mass_thr.get_fdata()
+    visible = data[data > neglog_alpha_05]
+    if len(visible) > 0:
+        vmax = np.ceil(np.max(visible) * 10) / 10
+    else:
+        vmax = neglog_alpha_05 + 0.1
     fig = plt.figure(figsize=(9, 5))
-    display = plot_glass_brain(logp_mass_thr, cmap="inferno", threshold=neglog_alpha_05, vmin=neglog_alpha_05, vmax=2.2,
+    display = plot_glass_brain(logp_mass_thr, cmap="inferno", threshold=neglog_alpha_05, vmin=neglog_alpha_05, vmax=vmax,
                                figure=fig, title=None, colorbar=True)
     display.frame_axes.figure.suptitle(f"Permutation test cluster-mass FWER \n {base_title} | corrected p < .05")
     display.savefig(os.path.join(output_dir, "04_nonparametric", f"{file_suffix}_perm_clustermass_fwer05.png"))
