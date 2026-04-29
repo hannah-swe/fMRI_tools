@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import os
 import nibabel as nib
 from PPPD import (_get_data_path, _get_derivatives_path, _get_participants_tsv, _get_full_filename, _get_mask_filename,
-                  _get_output_path, _get_mask_file)
+                  _get_output_path, _get_mask_file, _get_cluster_table_with_aal_labels)
 from PPPD.subjects import subs, subjects_to_exclude
 from nilearn.glm.second_level import SecondLevelModel, non_parametric_inference
 from nilearn.image import threshold_img, math_img
@@ -15,12 +15,13 @@ import pandas as pd
 import warnings
 import tempfile
 
+
 # ---Script configuration:
 task = "rest"
 runs = ["run-01", "run-02"] # pre, post
-part = 1 # supported: 1, 2 (part 1: subjects < 100; part 2: subjects >= 100)
-feature = "falff" # supported features: "falff", "seed_based", "alff"
-seed = None # List of supported seeds:
+part = 2 # supported: None, 1, 2 (None: all subjects; part 1: subjects < 100; part 2: subjects >= 100)
+feature = "seed_based" # supported features: "falff", "seed_based", "alff"
+seed = "InsulaOP3RAnat" # List of supported seeds:
                                     # "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
                                     # "InsulaOP3RAnat", "InsulaOP3Sphere",
                                     # "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",
@@ -31,6 +32,7 @@ group_comparison = "pat>HC" # supported comparisons: "pat>HC", "HC>pat"
 mask_strategy = "subject_based" # supported strategies: "subject_based", "predefined"
 predefined_mask = "vvn" # supported masks: "dmn", "vvn"
 threshold_mask = 0.8 # only used if mask_strategy == "subject_based"
+n_perm = 5000
 
 
 # --- Get all directories and participants.tsv:
@@ -47,27 +49,42 @@ deriv_dir = _get_derivatives_path(feature)
 # get output path
 output_dir = _get_output_path(feature)
 
+# --- Group mapping for contrast via predefined comparison strategy:
+if group_comparison == "pat>HC":
+    group_mapping = {
+        "patient": 1,
+        "control": -1}
+elif group_comparison == "HC>pat":
+    group_mapping = {
+        "control": 1,
+        "patient": -1}
+else:
+    raise ValueError(f"Unknown group comparison: {group_comparison}")
+
 
 # -- Choose subjects depending on experimental part:
-if part == 1:
+if part is None:
+    selected_subs = list(subs)
+elif part == 1:
     selected_subs = [s for s in subs if s < 100]
 elif part == 2:
     selected_subs = [s for s in subs if s >= 100]
 else:
-    raise ValueError("part must be either 1 or 2")
+    raise ValueError("part must be None, 1, or 2")
 selected_subs = [s for s in selected_subs if s not in subjects_to_exclude]
+print(f"Selected part: {part if part is not None else 'all'}")
+print(f"Selected subjects before loading: {len(selected_subs)}")
 
 
 # --- Load data:
 # initialize lists for derivatives, subject ids and mask images
 diff_imgs = []
-included_subjects = []
+included_rows = []
 sub_mask_imgs = []
 
 diff_output_dir = os.path.join(output_dir, "pre_post_diff")
 os.makedirs(diff_output_dir, exist_ok=True)
 
-# read subjects' derivatives data
 for s in selected_subs:
 
     subject_id = f"sub-{s:03d}"
@@ -118,35 +135,51 @@ for s in selected_subs:
                 print(f"Error loading mask {mask_path}: {e}")
                 continue
 
-    # only keep subjects with both runs
+    # require both runs
     if "run-01" not in run_imgs or "run-02" not in run_imgs:
-        print(f"Skipping {subject_id}: incomplete pre/post data")
+        print(f"Skipping {subject_id}: incomplete pre/post images")
         continue
 
-    # post - pre
+    # require both masks if subject-based mask is used
+    if mask_strategy == "subject_based":
+        if "run-01" not in run_masks or "run-02" not in run_masks:
+            print(f"Skipping {subject_id}: incomplete pre/post masks")
+            continue
+
     diff_img = math_img(
         "post - pre",
         post=run_imgs["run-02"],
         pre=run_imgs["run-01"]
     )
 
-    diff_filename = f"{subject_id}_task-{task}_{feature}_post-minus-pre.nii.gz"
+    if feature == "seed_based":
+        diff_filename = f"{subject_id}_task-{task}_{feature}_{seed}_post-minus-pre.nii.gz"
+    else:
+        diff_filename = f"{subject_id}_task-{task}_{feature}_post-minus-pre.nii.gz"
+
     diff_path = os.path.join(diff_output_dir, diff_filename)
     diff_img.to_filename(diff_path)
 
     diff_imgs.append(diff_path)
-    included_subjects.append(subject_id)
+
+    included_rows.append({
+        "subject_id": subject_id,
+        "subject_num": s,
+        "diff_img": diff_path,
+        "pre_img": run_imgs["run-01"],
+        "post_img": run_imgs["run-02"],
+    })
 
     if mask_strategy == "subject_based":
-        if "run-01" in run_masks and "run-02" in run_masks:
-            sub_mask_imgs.extend([run_masks["run-01"], run_masks["run-02"]])
-        else:
-            print(f"Warning: incomplete masks for {subject_id}")
+        sub_mask_imgs.extend([
+            run_masks["run-01"],
+            run_masks["run-02"]
+        ])
 
 included_df = pd.DataFrame(included_rows)
-print("Loaded images:", len(derivative_nii))
+
+print("Loaded difference images:", len(diff_imgs))
 print("Loaded subjects:", included_df["subject_id"].nunique())
-print(included_df.groupby("run")["subject_id"].nunique())
 
 
 # --- Get analysis mask:
@@ -168,13 +201,20 @@ else:
 
 
 # --- Get design matrix for pre-post / group model
-design_df = participants_df[
-    participants_df["subject_id"].isin(included_subjects)
-].copy()
-
-design_df = design_df.set_index("subject_id").loc[included_subjects].reset_index()
+design_df = included_df.merge(
+    participants_df[["subject_id", "group"]],
+    on="subject_id",
+    how="left"
+)
 
 design_df["group_code"] = design_df["group"].map(group_mapping)
+
+if design_df["group_code"].isna().any():
+    print(design_df[design_df["group_code"].isna()][["subject_id", "group"]])
+    raise ValueError("Some subjects have missing or unmapped group labels.")
+
+# keep exact image order
+diff_imgs = design_df["diff_img"].tolist()
 
 second_level_design = pd.DataFrame({
     "intercept": np.ones(len(design_df)),
@@ -187,68 +227,75 @@ print("Design matrix shape:", second_level_design.shape)
 plot_design_matrix(second_level_design)
 plt.show()
 
+# fit model (here: z-scores are used, also possible: 'z_score', 'stat', 'p_value', 'effect_size', 'effect_variance', 'all')
+second_level_model = SecondLevelModel(mask_img=analysis_mask)
+second_level_model = second_level_model.fit(diff_imgs, design_matrix=second_level_design)
+z_map = second_level_model.compute_contrast("group", output_type='z_score')
 
-# --- Group mapping for contrast via predefined comparison strategy:
-if group_comparison == "pat>HC":
-    group_mapping = {
-        "patient": 1,
-        "control": -1}
-elif group_comparison == "HC>pat":
-    group_mapping = {
-        "control": 1,
-        "patient": -1}
+
+# --- PARAMETRIC TESTS with different versions of threshold and correction for multiple comparisons:
+# Version 1: abs(z) > 3.09 (equivalent to p < 0.001 one-sided test), cluster size > 10 voxels
+# z(threshold)=3.09 for p=0.001 when testing one-sided; 3.29 for two-sided
+thresholded_map1 = threshold_img(z_map, cluster_threshold=10, threshold=3.09, two_sided=True)
+thr1_data = thresholded_map1.get_fdata()
+# plot thresholded maps if there are any voxels/clusters left
+if np.any(thr1_data != 0):
+    plot_stat_map(thresholded_map1, display_mode='mosaic', cmap="inferno"
+                  ) #title=f"z map {base_title}; z > 3.09; clusters > 10 voxels"
+    plt.show()
+    fig = plt.figure(figsize=(9,5))
+    display = plot_glass_brain(thresholded_map1, cmap="RdBu_r",
+                               figure=fig, title=None, plot_abs=False, symmetric_cbar=True)
+    display.frame_axes.figure.suptitle(f"z map; z > 3.09; clusters > 10 voxels")
+    # display.savefig(os.path.join(output_dir, "01_uncorrected", f"{file_suffix}_uncorrected_p001_cluster10.png"))
 else:
-    raise ValueError(f"Unknown group comparison: {group_comparison}")
+    print("No suprathreshold clusters; skipping plots.")
+# get cluster table with anatomical labels
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    cluster_table1 = _get_cluster_table_with_aal_labels(
+        stat_img=thresholded_map1,
+        stat_threshold=3.09,
+        cluster_threshold=10,
+        two_sided=True
+    )
 
 
-# --- Get design matrix for pre-post / group model
+# --- NON-PARAMETRIC TESTS: permutation inference with cluster-level correction:
+# threshold is in p-scale, not z-scale; threshold=0.001 corresponds to a cluster-forming threshold of p < .001
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    perm_out = non_parametric_inference(
+        second_level_input=diff_imgs,
+        design_matrix=second_level_design,
+        second_level_contrast="group",
+        mask=analysis_mask,
+        model_intercept=False,   # intercept is already in the design matrix
+        n_perm=n_perm,
+        two_sided_test=True,
+        threshold=0.001,         # cluster-forming threshold in p-scale
+        n_jobs=40,                # adapt to your system
+        verbose=1,
+    )
 
-# Add group info to included_df
-design_df = included_df.merge(
-    participants_df[["subject_id", "group"]],
-    on="subject_id",
-    how="left"
-)
+# Convert corrected -log10(p) maps into thresholded views (corrected p < .05  <=>  -log10(p) > 1.30103)
+neglog_alpha_05 = -np.log10(0.05)
+logp_size_thr = threshold_img(perm_out["logp_max_size"], threshold=neglog_alpha_05, two_sided=True)
+logp_mass_thr = threshold_img(perm_out["logp_max_mass"], threshold=neglog_alpha_05, two_sided=True)
+logp_voxel_thr = threshold_img(perm_out["logp_max_t"], threshold=neglog_alpha_05, two_sided=True)
 
-# Keep image order exactly as in design_df
-derivative_nii = design_df["img"].tolist()
-
-# Code variables
-# time: run-01 = pre, run-02 = post
-design_df["time"] = design_df["run"].map({
-    "run-01": -1,
-    "run-02": 1
-})
-
-# group: adapt this to your existing group_mapping
-# e.g. {"HC": -1, "pat": 1}
-design_df["group_code"] = design_df["group"].map(group_mapping)
-
-# interaction
-design_df["group_x_time"] = design_df["group_code"] * design_df["time"]
-
-# subject effects: one column per subject
-subject_dummies = pd.get_dummies(
-    design_df["subject_id"],
-    prefix="sub",
-    drop_first=True
-).astype(float)
-
-mixed_design_matrix = pd.concat(
-    [
-        pd.DataFrame({
-            "intercept": 1,
-            "group": design_df["group_code"].astype(float),
-            "time": design_df["time"].astype(float),
-            "group_x_time": design_df["group_x_time"].astype(float),
-        }),
-        subject_dummies
-    ],
-    axis=1
-)
-
-print(len(derivative_nii))
-print(mixed_design_matrix.shape)
-
-plot_design_matrix(mixed_design_matrix)
-plt.show()
+# --- Plot cluster-mass corrected map
+if np.any(logp_mass_thr.get_fdata() != 0):
+    data = logp_mass_thr.get_fdata()
+    visible = data[data > neglog_alpha_05]
+    if len(visible) > 0:
+        vmax = np.ceil(np.max(visible) * 10) / 10
+    else:
+        vmax = neglog_alpha_05 + 0.1
+    fig = plt.figure(figsize=(9, 5))
+    display = plot_glass_brain(logp_mass_thr, cmap="inferno", threshold=neglog_alpha_05, vmin=neglog_alpha_05, vmax=vmax,
+                               figure=fig, title=None, colorbar=True)
+    # display.frame_axes.figure.suptitle(f"Permutation test cluster-mass FWER \n {base_title} | corrected p < .05")
+    # display.savefig(os.path.join(output_dir, "04_nonparametric", f"{file_suffix}_perm_clustermass_fwer05.png"))
+else:
+    print("No clusters survive permutation cluster-mass FWER correction.")

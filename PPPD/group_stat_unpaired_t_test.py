@@ -119,8 +119,8 @@ if mask_strategy == "subject_based":
      if len(sub_mask_imgs) == 0:
          raise ValueError("No subjects mask found.")
      analysis_mask = intersect_masks(sub_mask_imgs, threshold=threshold_mask)
-     save_mask_path = os.path.join(output_dir, "masks", f"group_mask_{file_suffix}.nii.gz")
-     analysis_mask.to_filename(save_mask_path)
+     # save_mask_path = os.path.join(output_dir, "masks", f"group_mask_{file_suffix}.nii.gz")
+     # analysis_mask.to_filename(save_mask_path)
 # use predefined mask; cave: resample before to same MNI space HALFpipe is using
 elif mask_strategy == "predefined":
     if predefined_mask is None:
@@ -163,8 +163,8 @@ second_level_model_unpaired = second_level_model_unpaired.fit(derivative_nii, de
 z_map = second_level_model_unpaired.compute_contrast("group", output_type='z_score')
 
 # save statistical output map
-save_z_map = os.path.join(output_dir, "stat_maps", f"z_map_{file_suffix}.nii.gz")
-z_map.to_filename(save_z_map)
+# save_z_map = os.path.join(output_dir, "stat_maps", f"z_map_{file_suffix}.nii.gz")
+# z_map.to_filename(save_z_map)
 
 
 # --- PARAMETRIC TESTS with different versions of threshold and correction for multiple comparisons:
