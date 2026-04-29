@@ -266,42 +266,36 @@ neglog_alpha_05 = -np.log10(0.05)
 # use parametric z-map only for the sign/direction
 sign_z_map = second_level_model.compute_contrast("group", output_type="z_score")
 # signed cluster-mass corrected -log10(p) map
-signed_logp_mass_thr = math_img(
-    f"np.where(logp > {neglog_alpha_05}, np.sign(z) * logp, 0)",
-    logp=perm_out["logp_max_mass"],
-    z=sign_z_map,
-)
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
-    logp_size_thr = threshold_img(perm_out["logp_max_size"], threshold=neglog_alpha_05, two_sided=True)
-    logp_mass_thr = threshold_img(perm_out["logp_max_mass"], threshold=neglog_alpha_05, two_sided=True)
-    logp_voxel_thr = threshold_img(perm_out["logp_max_t"], threshold=neglog_alpha_05, two_sided=True)
+    signed_logp_mass_thr = math_img(
+        f"np.where(logp > {neglog_alpha_05}, np.sign(z) * logp, 0)",
+        logp=perm_out["logp_max_mass"],
+        z=sign_z_map
+    )
 
 # plot cluster-mass corrected map
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
-    if np.any(logp_mass_thr.get_fdata() != 0):
-        data = logp_mass_thr.get_fdata()
-        visible = data[data > neglog_alpha_05]
-        if len(visible) > 0:
-            vmax = np.ceil(np.max(visible) * 10) / 10
-        else:
-            vmax = neglog_alpha_05 + 0.1
+    data = signed_logp_mass_thr.get_fdata()
+    visible = np.abs(data[data != 0])
+    if len(visible) > 0:
+        vmax = np.ceil(np.max(visible) * 10) / 10
         fig = plt.figure(figsize=(9, 5))
-        display = plot_glass_brain(logp_mass_thr, cmap="inferno", threshold=neglog_alpha_05, vmin=neglog_alpha_05,
-                                   vmax=vmax, figure=fig, title=None, colorbar=True)
-        display.frame_axes.figure.suptitle(f"difference map permutation test cluster-mass FWER \n {base_title} | corrected p < .05")
+        display = plot_glass_brain(signed_logp_mass_thr, cmap="RdBu_r", vmax=vmax, threshold=neglog_alpha_05,
+                                   plot_abs=False, symmetric_cbar=True, figure=fig, title=None, colorbar=True) #
+        display.frame_axes.figure.suptitle(f"difference map permutation test cluster-mass FWER\n {base_title} | corrected p < .05")
         display.savefig(os.path.join(output_dir, "04_nonparametric", f"{file_suffix}_perm_clustermass_fwer05.png"))
     else:
         print("No clusters survive permutation cluster-mass FWER correction.")
 
 # Get cluster table with aal brain atlas
-logp_mass_thr_float = math_img("img.astype(float)", img=logp_mass_thr)
+logp_mass_thr_float = math_img("img.astype(float)", img=signed_logp_mass_thr)
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     cluster_table_perm_mass = _get_cluster_table_with_aal_labels(
         stat_img=logp_mass_thr_float,
         stat_threshold=neglog_alpha_05,
         cluster_threshold=0,
-        two_sided=False,
+        two_sided=True,
     )
