@@ -344,12 +344,29 @@ def _get_posthoc_cluster_mask(feature, group_comparison, direction, part=None, s
     else:
         part_label = str(part)
 
-    # build filename
+    # build filename and directory
     if feature == "seed_based":
         filename = f"{feature}_{seed}_{group_comparison}_{part_label}_{direction}_clusters_mask.nii.gz"
     else:
         filename = f"{feature}_{group_comparison}_{part_label}_{direction}_clusters_mask.nii.gz"
-
     mask_dir = os.path.join(_get_output_path(feature), "pre_post_diff", "sig_cluster_masks", f"{direction}")
 
     return os.path.join(mask_dir, filename)
+
+
+# Get signed cluster-mass corrected permutation map
+def _get_signed_posthoc_map(feature, group_comparison, part=None, seed=None,):
+    if feature == "seed_based" and seed is None:
+        raise ValueError("seed must be provided for seed_based feature.")
+    if part is None:
+        part_label = "all"
+    else:
+        part_label = str(part)
+    if feature == "seed_based":
+        filename = f"{feature}_{seed}_{group_comparison}_{part_label}_signed_logp_clustermass_fwer05.nii.gz"
+    else:
+        filename = f"{feature}_{group_comparison}_{part_label}_signed_logp_clustermass_fwer05.nii.gz"
+
+    map_dir = os.path.join(_get_output_path(feature), "pre_post_diff", "sig_cluster_masks", "signed")
+
+    return os.path.join(map_dir, filename)

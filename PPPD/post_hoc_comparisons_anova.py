@@ -3,8 +3,8 @@ matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 import os
 import nibabel as nib
-from PPPD import (_get_data_path, _get_derivatives_path, _get_participants_tsv, _get_full_filename,
-                  _get_output_path, _get_posthoc_cluster_mask, _get_cluster_table_with_aal_labels)
+from PPPD import (_get_data_path, _get_derivatives_path, _get_participants_tsv, _get_full_filename, _get_output_path,
+                  _get_posthoc_cluster_mask, _get_signed_posthoc_map, _get_cluster_table_with_aal_labels)
 from PPPD.subjects import subs, subjects_to_exclude
 from nilearn.masking import apply_mask
 import numpy as np
@@ -46,6 +46,22 @@ deriv_dir = _get_derivatives_path(feature)
 output_dir = _get_output_path(feature)
 output_dir = os.path.join(output_dir, "pre_post_diff", "post-hoc")
 os.makedirs(output_dir, exist_ok=True)
+
+
+# --- Define the file suffix
+if feature == "seed_based":
+    base_title = f"{feature} {seed}"
+    file_suffix = f"{feature}_{seed}"
+else:
+    base_title = f"{feature}"
+    file_suffix = f"{feature}"
+if part is None:
+    part_label = "all"
+    base_title = f"{base_title}; subjects: {part_label}"
+else:
+    part_label = f"{part}"
+    base_title = f"{base_title}; subjects part: {part_label}"
+file_suffix = f"{file_suffix}_{part_label}_{direction}"
 
 
 # --- Choose subjects depending on experimental part:
@@ -104,9 +120,13 @@ print("Loaded subjects:", included_df["subject_id"].nunique())
 
 
 # --- Load mask with significant clusters:
+# get binary positive or negative cluster mask
 mask_path = _get_posthoc_cluster_mask(feature=feature, seed=seed, group_comparison=group_comparison, part=part,
                                       direction=direction)
 cluster_mask = nib.load(mask_path)
+# get signed cluster mask for p-values from voxel-wise ANOVA
+signed_map_path = _get_signed_posthoc_map(feature=feature, seed=seed, group_comparison=group_comparison, part=part)
+signed_logp_mass_thr = nib.load(signed_map_path)
 
 # --- Split significant mask into single clusters:
 mask_data = cluster_mask.get_fdata() != 0
@@ -125,6 +145,17 @@ cluster_mask_paths = []
 for cluster_id in range(1, n_clusters + 1):
     single_cluster_data = (labeled_data == cluster_id).astype(np.uint8)
     n_voxels = int(single_cluster_data.sum())
+
+    # get cluster-level corrected p-value
+    cluster_logp = np.max(np.abs(signed_logp_mass_thr.get_fdata()[labeled_data == cluster_id]))
+    cluster_p = 10 ** (-cluster_logp)
+    print(
+        f"Cluster {cluster_id}: "
+        f"-log10(p) = {cluster_logp:.3f}, "
+        f"p = {cluster_p:.5f}"
+    )
+
+    # get single cluster image
     single_cluster_img = nib.Nifti1Image(
         single_cluster_data,
         affine=cluster_mask.affine,
@@ -150,12 +181,7 @@ for cluster_id in range(1, n_clusters + 1):
         aal_label_clean = f"cluster-{cluster_id:02d}"
 
     # save cluster mask
-    cluster_filename = (
-        f"{feature}_{seed}_{group_comparison}_"
-        f"{'all' if part is None else part}_"
-        f"{direction}_cluster-{cluster_id:02d}_"
-        f"{aal_label_clean}.nii.gz"
-    )
+    cluster_filename = f"{file_suffix}_{aal_label_clean}.nii.gz"
     cluster_path = os.path.join(single_cluster_dir, cluster_filename)
     single_cluster_img.to_filename(cluster_path)
     cluster_mask_paths.append(cluster_path)
@@ -163,7 +189,10 @@ for cluster_id in range(1, n_clusters + 1):
     cluster_info.append({
         "cluster_id": cluster_id,
         "aal_label": aal_label_clean,
+        "direction": direction,
         "n_voxels": n_voxels,
+        "logp": cluster_logp,
+        "p_value": cluster_p,
         "path": cluster_path,
     })
 
@@ -223,6 +252,18 @@ for cluster_id in sorted(plot_df["cluster"].unique()):
     this_diff = diff_df[diff_df["cluster"] == cluster_id].copy()
     cluster_label = cluster_info_df.loc[cluster_info_df["cluster_id"] == cluster_id, "aal_label"].iloc[0]
 
+    # get stars for asteriks
+    cluster_p = cluster_info_df.loc[cluster_info_df["cluster_id"] == cluster_id, "p_value"].iloc[0]
+    if cluster_p < 0.001:
+        stars = "***"
+    elif cluster_p < 0.01:
+        stars = "**"
+    elif cluster_p < 0.05:
+        stars = "*"
+    else:
+        stars = "n.s."
+
+
     # --- Plot 1: Pre/Post trajectories
     plt.figure(figsize=(7, 8))
     plt.axhline(0, color="grey", linewidth=2, alpha=0.5)
@@ -235,7 +276,7 @@ for cluster_id in sorted(plot_df["cluster"].unique()):
     plt.ylabel(f"Mean value in {cluster_label}")
     plt.tight_layout()
     sns.despine()
-    plt.savefig(os.path.join(plot_dir, f"{seed}_{cluster_label}_lineplot_pre_post_by_group.png"), dpi=300)
+    plt.savefig(os.path.join(plot_dir, f"{file_suffix}_{cluster_label}_lineplot_pre_post_by_group.png"), dpi=300)
     plt.show()
 
 
@@ -245,11 +286,22 @@ for cluster_id in sorted(plot_df["cluster"].unique()):
     sns.boxplot(data=this_diff, x="group", y="post_minus_pre", hue="group", showfliers=False, palette=palette,
                 linewidth=2.5,)
     sns.stripplot(data=this_diff, x="group", y="post_minus_pre", jitter=True, alpha=0.5, color="black",)
-    plt.title(f"Cluster {cluster_id}: post - pre")
+    # y-position above data
+    y_max = this_diff["post_minus_pre"].max()
+    y_min = this_diff["post_minus_pre"].min()
+    h = 0.02 * (y_max - y_min)
+    y = y_max + h
+    # x positions of groups
+    x1 = 0
+    x2 = 1
+    # significance bracket
+    plt.plot( [x1, x1, x2, x2], [y, y + h, y + h, y], lw=2, c="black")
+    # stars
+    plt.text((x1 + x2) * 0.5, y + h, stars, ha="center", va="bottom", fontsize=16, weight="bold",)
+    plt.title(f"{seed}: difference (post - pre)")
     plt.xlabel("")
-    plt.ylabel("Post - pre mean value")
+    plt.ylabel(f"Mean value in {cluster_label}")
     sns.despine()
     plt.tight_layout()
-    plt.savefig(os.path.join(plot_dir, f"{seed}_{cluster_label}_boxplot_difference_by_group.png"), dpi=300)
+    plt.savefig(os.path.join(plot_dir, f"{file_suffix}_{cluster_label}_boxplot_difference_by_group.png"), dpi=300)
     plt.show()
-
