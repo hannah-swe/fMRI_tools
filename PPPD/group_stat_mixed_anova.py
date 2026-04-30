@@ -16,7 +16,7 @@ import warnings
 import tempfile
 
 
-# ---Script configuration:
+# --- Script configuration:
 task = "rest"
 runs = ["run-01", "run-02"] # pre, post
 part = None # supported: None, 1, 2 (None: all subjects; part 1: subjects < 100; part 2: subjects >= 100)
@@ -81,7 +81,7 @@ else:
     raise ValueError(f"Unknown group comparison: {group_comparison}")
 
 
-# -- Choose subjects depending on experimental part:
+# --- Choose subjects depending on experimental part:
 if part is None:
     selected_subs = list(subs)
 elif part == 1:
@@ -299,3 +299,30 @@ with warnings.catch_warnings():
         cluster_threshold=0,
         two_sided=True,
     )
+
+
+# --- Save significant cluster masks for post-hoc extraction
+posthoc_mask_dir = os.path.join(output_dir, "sig_cluster_masks")
+os.makedirs(posthoc_mask_dir, exist_ok=True)
+
+# full signed corrected map
+signed_logp_mass_path = os.path.join(posthoc_mask_dir, "signed", f"{file_suffix}_signed_logp_clustermass_fwer05.nii.gz")
+signed_logp_mass_thr.to_filename(signed_logp_mass_path)
+
+# positive: (post-pre)patient > (post-pre)control
+pos_sig_mask = math_img(f"(img > {neglog_alpha_05}).astype(float)", img=signed_logp_mass_thr)
+pos_mask_path = os.path.join(posthoc_mask_dir, "positive", f"{file_suffix}_positive_clusters_mask.nii.gz")
+if np.any(pos_sig_mask.get_fdata() != 0):
+    pos_sig_mask.to_filename(pos_mask_path)
+    print("Saved positive cluster mask.")
+else:
+    print("No positive significant clusters.")
+
+# negative: (post-pre)control > (post-pre)patient
+neg_sig_mask = math_img(f"(img < -{neglog_alpha_05}).astype(float)", img=signed_logp_mass_thr)
+neg_mask_path = os.path.join(posthoc_mask_dir, "negative", f"{file_suffix}_negative_clusters_mask.nii.gz")
+if np.any(neg_sig_mask.get_fdata() != 0):
+    neg_sig_mask.to_filename(neg_mask_path)
+    print("Saved negative cluster mask.")
+else:
+    print("No negative significant clusters.")

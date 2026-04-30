@@ -245,16 +245,7 @@ def _load_juelich_prob_atlas(atlas_name="prob-2mm"):
 
 
 # Get coordinates to juelich probability labels
-def _coord_to_juelich_prob_labels_sphere(
-    x, y, z,
-    atlas_img,
-    atlas_data,
-    labels,
-    radius_mm=4,
-    top_n=5,
-    min_prob=0.0
-):
-
+def _coord_to_juelich_prob_labels_sphere(x, y, z, atlas_img, atlas_data, labels, radius_mm=4, top_n=5, min_prob=0.0):
     shape = atlas_data.shape[:3]
 
     # alle voxel koordinaten
@@ -300,16 +291,9 @@ def _coord_to_juelich_prob_labels_sphere(
     return best_label, best_prob, all_probs
 
 
-def _get_cluster_table_with_juelich_prob_labels(
-    stat_img,
-    stat_threshold,
-    cluster_threshold=0,
-    two_sided=False,
-    min_distance=8.0,
-    atlas_name="prob-2mm",
-    top_n=5,
-    min_prob=0.0
-):
+# Get the significant cluster table with labels of probabilistic juelich brain atlas
+def _get_cluster_table_with_juelich_prob_labels(stat_img, stat_threshold, cluster_threshold=0, two_sided=False,
+                                                min_distance=8.0, atlas_name="prob-2mm", top_n=5, min_prob=0 ):
     clusters_table = get_clusters_table(
         stat_img,
         stat_threshold=stat_threshold,
@@ -331,15 +315,12 @@ def _get_cluster_table_with_juelich_prob_labels(
             coord_cols = candidate
             break
     if coord_cols is None:
-        raise ValueError(
-            f"Could not find coordinate columns. Available: {list(clusters_table.columns)}"
-        )
+        raise ValueError(f"Could not find coordinate columns. Available: {list(clusters_table.columns)}")
     x_col, y_col, z_col = coord_cols
     clusters_table[
         ["juelich_label", "juelich_prob", "juelich_top_probs"]
     ] = clusters_table.apply(
-        lambda row: pd.Series(
-            _coord_to_juelich_prob_labels_sphere(
+        lambda row: pd.Series(_coord_to_juelich_prob_labels_sphere(
                 row[x_col], row[y_col], row[z_col],
                 atlas_img, atlas_data, labels,
                 top_n=top_n,
@@ -350,3 +331,25 @@ def _get_cluster_table_with_juelich_prob_labels(
     )
 
     return clusters_table
+
+
+# Get path to significant post-hoc cluster mask
+def _get_posthoc_cluster_mask(feature, group_comparison, direction, part=None, seed=None,):
+    if feature == "seed_based" and seed is None:
+        raise ValueError("seed must be provided for seed_based feature.")
+    if direction not in ["positive", "negative"]:
+        raise ValueError("direction must be 'positive' or 'negative'")
+    if part is None:
+        part_label = "all"
+    else:
+        part_label = str(part)
+
+    # build filename
+    if feature == "seed_based":
+        filename = f"{feature}_{seed}_{group_comparison}_{part_label}_{direction}_clusters_mask.nii.gz"
+    else:
+        filename = f"{feature}_{group_comparison}_{part_label}_{direction}_clusters_mask.nii.gz"
+
+    mask_dir = os.path.join(_get_output_path(feature), "pre_post_diff", "sig_cluster_masks", f"{direction}")
+
+    return os.path.join(mask_dir, filename)
