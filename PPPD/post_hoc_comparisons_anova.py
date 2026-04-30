@@ -18,7 +18,7 @@ task = "rest"
 runs = ["run-01", "run-02"] # pre, post
 part = None # supported: None, 1, 2 (None: all subjects; part 1: subjects < 100; part 2: subjects >= 100)
 feature = "seed_based" # supported features: "falff", "seed_based", "alff"
-seed = "InsulaId1L" # List of supported seeds:
+seed = "OperculumOP4R" # List of supported seeds:
                                     # "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
                                     # "InsulaOP3RAnat", "InsulaOP3Sphere",
                                     # "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",
@@ -267,10 +267,10 @@ for cluster_id in sorted(plot_df["cluster"].unique()):
     # --- Plot 1: Pre/Post trajectories
     plt.figure(figsize=(7, 8))
     plt.axhline(0, color="grey", linewidth=2, alpha=0.5)
-    sns.lineplot(data=this_plot, x="run", y="value", hue="group", units="subject_id", estimator=None, alpha=0.4,
-                 linewidth=1.5, palette=palette, legend=False,)
+    sns.lineplot(data=this_plot, x="run", y="value", hue="group", units="subject_id", estimator=None, alpha=0.35,
+                 linewidth=1.75, palette=palette, legend=False,)
     sns.pointplot(data=this_plot, x="run", y="value", hue="group", errorbar="se", markers="o", linestyles="-",
-                  linewidth=2.75, palette=palette, legend=False,)
+                  linewidth=3.5, palette=palette, legend=False,)
     plt.title(f"{seed}: pre-post values")
     plt.xlabel("")
     plt.ylabel(f"Mean value in {cluster_label}")
