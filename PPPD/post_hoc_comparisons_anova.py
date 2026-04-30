@@ -26,6 +26,7 @@ seed = "InsulaId1L" # List of supported seeds:
                                     # "Precuneus"
 group_comparison = "pat>HC" # supported comparisons: "pat>HC", "HC>pat"
 direction = "negative" # possible directions: "positive" (= clusters, where pat>HC), "negative" (= cluster, where HC>pat)
+palette = {"control": "teal", "patient": "hotpink"}
 
 
 # --- Get all directories and participants.tsv:
@@ -182,7 +183,7 @@ for cluster_id in sorted(plot_df["cluster"].unique()):
     this_diff = diff_df[diff_df["cluster"] == cluster_id].copy()
 
     # --- Plot 1: Pre/Post trajectories
-    plt.figure(figsize=(7, 5))
+    plt.figure(figsize=(7, 8))
     sns.lineplot(
         data=this_plot,
         x="run",
@@ -190,10 +191,11 @@ for cluster_id in sorted(plot_df["cluster"].unique()):
         hue="group",
         units="subject_id",
         estimator=None,
-        alpha=0.35,
-        linewidth=1,
+        alpha=0.4,
+        linewidth=1.5,
+        palette=palette,
+        legend=False,
     )
-
     sns.pointplot(
         data=this_plot,
         x="run",
@@ -202,19 +204,14 @@ for cluster_id in sorted(plot_df["cluster"].unique()):
         errorbar="se",
         markers="o",
         linestyles="-",
-        linewidth=2,
+        linewidth=2.75,
+        palette=palette,
+        legend=False,
     )
-
-    plt.axhline(0, linestyle="--", linewidth=1)
+    plt.axhline(0, color="grey", linewidth=2, alpha=0.5)
     plt.title(f"Cluster {cluster_id}: pre-post values")
     plt.xlabel("")
     plt.ylabel("Mean value in cluster")
-
-    handles, labels = plt.gca().get_legend_handles_labels()
-    plt.legend(handles[:len(this_plot["group"].unique())],
-               labels[:len(this_plot["group"].unique())],
-               title="group")
-
     plt.tight_layout()
     sns.despine()
     plt.savefig(os.path.join(plot_dir, f"cluster-{cluster_id:02d}_pre_post_by_group.png"), dpi=300)
@@ -222,28 +219,29 @@ for cluster_id in sorted(plot_df["cluster"].unique()):
 
 
     # --- Plot 2: Difference values
-    plt.figure(figsize=(6, 5))
-
+    plt.figure(figsize=(7, 8))
+    plt.axhline(0, color="grey", linewidth=2, alpha=0.5)
     sns.boxplot(
         data=this_diff,
         x="group",
         y="post_minus_pre",
-        showfliers=False
+        hue="group",
+        showfliers=False,
+        palette=palette,
+        linewidth=2.5,
     )
-
     sns.stripplot(
         data=this_diff,
         x="group",
         y="post_minus_pre",
         jitter=True,
-        alpha=0.7
+        alpha=0.5,
+        color="black",
     )
-
-    plt.axhline(0, linestyle="--", linewidth=1)
     plt.title(f"Cluster {cluster_id}: post - pre")
     plt.xlabel("")
     plt.ylabel("Post - pre mean value")
-
+    sns.despine()
     plt.tight_layout()
     plt.savefig(os.path.join(plot_dir, f"cluster-{cluster_id:02d}_difference_by_group.png"), dpi=300)
     plt.show()
