@@ -103,15 +103,20 @@ def _get_mask_filename(subject_id, task, run, feature, seed=None):
 
 
 # Gets output path
-def _get_output_path(feature):
-    if feature == "seed_based":
-        return os.path.join(output_path, "both_parts_seed1")
-    elif feature == "falff":
-        return os.path.join(output_path, "both_parts_falff")
-    elif feature == "alff":
-        return os.path.join(output_path, "both_parts_alff")
+def _get_output_path(part, feature):
+    if part is None and feature == "seed_based":
+        folder = "both_parts_seed1"
+    elif part is None and feature == "falff":
+        folder = "both_parts_falff"
+    elif part is None and feature == "alff":
+        folder = "both_parts_alff"
+    elif part == 1 and feature == "seed_based":
+        folder = "part1_seed1"
+    elif part == 2 and feature == "seed_based":
+        folder = "part2_seed1"
     else:
-        raise ValueError(f"Unsupported feature: {feature}")
+        raise ValueError(f"Unsupported combination: part = {part}, feature = {feature}")
+    return os.path.join(output_path, folder)
 
 
 # Gets mask path and load predefined mask file
