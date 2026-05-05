@@ -16,9 +16,9 @@ import seaborn as sns
 # --- Script configuration:
 task = "rest"
 runs = ["run-01", "run-02"] # pre, post
-part = None # supported: None, 1, 2 (None: all subjects; part 1: subjects < 100; part 2: subjects >= 100)
+part = 1 # supported: None, 1, 2 (None: all subjects; part 1: subjects < 100; part 2: subjects >= 100)
 feature = "seed_based" # supported features: "falff", "seed_based", "alff"
-seed = "InsulaId1L" # List of supported seeds:
+seed = "OperculumOP4L" # List of supported seeds:
                                     # "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
                                     # "InsulaOP3RAnat", "InsulaOP3Sphere",
                                     # "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",
@@ -43,7 +43,7 @@ participants_df["subject_id"] = participants_df["participant_id"].apply(lambda x
 deriv_dir = _get_derivatives_path(feature)
 
 # get output path
-output_dir = _get_output_path(feature)
+output_dir = _get_output_path(part, feature)
 output_dir = os.path.join(output_dir, "pre_post_diff", "post-hoc")
 os.makedirs(output_dir, exist_ok=True)
 
@@ -82,7 +82,8 @@ print(f"Selected subjects before loading: {len(selected_subs)}")
 # --- Load data:
 # initialize lists for derivatives, subject ids and mask images
 included_rows = []
-
+mask_path = _get_posthoc_cluster_mask(feature=feature, seed=seed, group_comparison=group_comparison, part=part,
+                                      direction=direction)
 for s in selected_subs:
     # get full subject id
     subject_id = f"sub-{s:03d}"

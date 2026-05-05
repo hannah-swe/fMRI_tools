@@ -20,8 +20,8 @@ import tempfile
 task = "rest"
 runs = ["run-01", "run-02"] # pre, post
 part = 2 # supported: None, 1, 2 (None: all subjects; part 1: subjects < 100; part 2: subjects >= 100)
-feature = "seed_based" # supported features: "falff", "seed_based", "alff"
-seed = "OperculumOP1R" # List of supported seeds:
+feature = "falff" # supported features: "falff", "seed_based", "alff"
+seed = None # List of supported seeds:
                                     # "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
                                     # "InsulaOP3RAnat", "InsulaOP3Sphere",
                                     # "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",
