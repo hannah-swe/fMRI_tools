@@ -18,10 +18,10 @@ import warnings
 
 # --- Script configuration:
 task = "rest"
-run = "run-02" # "run-01" == pre, "run-02" == post
+run = "run-01" # "run-01" == pre, "run-02" == post
 part = None # supported: None, 1, 2 (None: all subjects; part 1: subjects < 100; part 2: subjects >= 100)
 feature = "seed_based" # supported features: "falff", "seed_based", "alff"
-seed = "OperculumOP4L" # List of supported seeds:
+seed = "InsulaOP3RAnat" # List of supported seeds:
                                     # "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
                                     # "InsulaOP3RAnat", "InsulaOP3Sphere",
                                     # "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",
@@ -33,7 +33,7 @@ mask_strategy = "subject_based" # supported strategies: "subject_based", "predef
 predefined_mask = "vvn" # supported masks: "dmn", "vvn"
 threshold_mask = 0.8 # only used if mask_strategy == "subject_based"
 # number of permutations for non-parametric cluster-based permutation test
-n_perm = 10000
+n_perm = 1000
 
 
 # --- Define the file suffix
@@ -65,6 +65,7 @@ deriv_dir = _get_derivatives_path(feature)
 
 # get output path
 output_dir = _get_output_path(part, feature)
+
 
 # --- Choose subjects depending on experimental part:
 if part is None:
@@ -172,6 +173,8 @@ print(unpaired_design_matrix.shape)
 # plot_design_matrix(unpaired_design_matrix)
 # plt.show()
 
+
+# --- PARAMETRIC TESTS with different versions of threshold and correction for multiple comparisons:
 # fit model (here: z-scores are used, also possible: 'z_score', 'stat', 'p_value', 'effect_size', 'effect_variance', 'all')
 second_level_model_unpaired = SecondLevelModel(mask_img=analysis_mask)
 second_level_model_unpaired = second_level_model_unpaired.fit(derivative_nii, design_matrix=unpaired_design_matrix)
@@ -181,8 +184,6 @@ z_map = second_level_model_unpaired.compute_contrast("group", output_type='z_sco
 # save_z_map = os.path.join(output_dir, "stat_maps", f"z_map_{file_suffix}.nii.gz")
 # z_map.to_filename(save_z_map)
 
-
-# --- PARAMETRIC TESTS with different versions of threshold and correction for multiple comparisons:
 # Version 1: abs(z) > 3.09 (equivalent to p < 0.001 one-sided test), cluster size > 10 voxels
 # z(threshold)=3.09 for p=0.001 when testing one-sided; 3.29 for two-sided
 thresholded_map1 = threshold_img(z_map, threshold=3.09, cluster_threshold=10, two_sided=False)
@@ -294,6 +295,7 @@ with warnings.catch_warnings():
     )
 report_v3.save_as_html(os.path.join(output_dir, "03_bonferroni", f"glm_report_{file_suffix}_bonferroni_fwer05.html"))
 '''
+
 
 # --- NON-PARAMETRIC TESTS: permutation inference with cluster-level correction:
 # threshold is in p-scale, not z-scale; threshold=0.001 corresponds to a cluster-forming threshold of p < .001
