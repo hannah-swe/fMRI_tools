@@ -29,6 +29,7 @@ group_comparison = "pat>HC" # supported comparisons: "pat>HC", "HC>pat"
 direction = "negative" # possible directions: "positive" (= clusters, where pat>HC), "negative" (= cluster, where HC>pat)
 # define color palette for plotting
 palette = {"control": "teal", "patient": "hotpink"}
+print("test")
 
 
 # --- Get all directories and participants.tsv:
