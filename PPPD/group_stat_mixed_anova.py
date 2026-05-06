@@ -19,9 +19,9 @@ import tempfile
 # --- Script configuration:
 task = "rest"
 runs = ["run-01", "run-02"] # pre, post
-part = 2 # supported: None, 1, 2 (None: all subjects; part 1: subjects < 100; part 2: subjects >= 100)
-feature = "falff" # supported features: "falff", "seed_based", "alff"
-seed = None # List of supported seeds:
+part = None # supported: None, 1, 2 (None: all subjects; part 1: subjects < 100; part 2: subjects >= 100)
+feature = "seed_based" # supported features: "falff", "seed_based", "alff"
+seed = "InsulaId1L" # List of supported seeds:
                                     # "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
                                     # "InsulaOP3RAnat", "InsulaOP3Sphere",
                                     # "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",
@@ -50,6 +50,7 @@ deriv_dir = _get_derivatives_path(feature)
 # get output path
 output_dir = _get_output_path(part, feature)
 output_dir = os.path.join(output_dir, "pre_post_diff")
+os.makedirs(output_dir, exist_ok=True)
 
 
 # --- Define the file suffix

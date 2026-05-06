@@ -61,6 +61,7 @@ def _get_participants_tsv():
     if not os.path.exists(tsv_path):
         raise FileNotFoundError(f"No participants.tsv found in {tsv_path}")
     df = pd.read_csv(tsv_path, sep="\t")
+
     return df
 
 
@@ -99,6 +100,7 @@ def _get_mask_filename(subject_id, task, run, feature, seed=None):
         mask_filename = f"{subject_id}_task-{task}_{run}_feature-fALFF_mask.nii.gz"
     else:
         raise ValueError(f"Unsupported feature: {feature}")
+
     return mask_filename
 
 
@@ -120,7 +122,10 @@ def _get_output_path(part, feature):
         folder = "part2_falff"
     else:
         raise ValueError(f"Unsupported combination: part = {part}, feature = {feature}")
-    return os.path.join(output_path, folder)
+    full_output_path = os.path.join(output_path, folder)
+    os.makedirs(full_output_path, exist_ok=True)
+
+    return full_output_path
 
 
 # Gets mask path and load predefined mask file
@@ -132,6 +137,7 @@ def _get_mask_file(predefined_mask):
         raise FileNotFoundError(f"No resampled mask file found in {mask_dir}")
     mask_file = nib.load(mask_dir)
     print(f"Used mask file: {mask_dir}")
+
     return mask_file
 
 
@@ -164,6 +170,7 @@ def _load_local_aal_atlas(aal_dir=aal_path):
         value_to_label[int(index_elem.text)] = name_elem.text.strip()
     if not value_to_label:
         raise ValueError(f"No labels could be parsed from XML: {xml_path}")
+
     return atlas_img, atlas_data, value_to_label
 
 
@@ -181,6 +188,7 @@ def _distance_to_region(x, y, z, atlas_img, atlas_data, target_value):
     peak = np.array([[x, y, z]])
     # minimal distance
     distances = cdist(peak, region_coords)
+
     return float(distances.min())
 
 
@@ -189,6 +197,7 @@ def _coord_to_label_and_distance(x, y, z, atlas_img, atlas_data, value_to_label)
     xyz_h = np.array([x, y, z, 1.0])
     ijk = np.linalg.inv(atlas_img.affine).dot(xyz_h)[:3]
     ijk = np.round(ijk).astype(int)
+
     if np.any(ijk < 0) or np.any(ijk >= atlas_data.shape):
         return "out_of_bounds"
 
@@ -241,6 +250,7 @@ def _get_cluster_table_with_aal_labels(stat_img, stat_threshold, cluster_thresho
                                          atlas_img, atlas_data, value_to_label)
         ),
         axis=1)
+
     return clusters_table
 
 
@@ -250,6 +260,7 @@ def _load_juelich_prob_atlas(atlas_name="prob-2mm"):
     atlas_img = load_img(atlas.maps)
     atlas_data = atlas_img.get_fdata()  # 4D: X, Y, Z, region
     labels = list(atlas.labels)
+
     return atlas_img, atlas_data, labels
 
 
@@ -359,6 +370,7 @@ def _get_posthoc_cluster_mask(feature, group_comparison, direction, part=None, s
     else:
         filename = f"{feature}_{group_comparison}_{part_label}_{direction}_clusters_mask.nii.gz"
     mask_dir = os.path.join(_get_output_path(part, feature), "pre_post_diff", "sig_cluster_masks", f"{direction}")
+    os.makedirs(mask_dir, exist_ok=True)
 
     return os.path.join(mask_dir, filename)
 
@@ -377,5 +389,6 @@ def _get_signed_posthoc_map(feature, group_comparison, part=None, seed=None,):
         filename = f"{feature}_{group_comparison}_{part_label}_signed_logp_clustermass_fwer05.nii.gz"
 
     map_dir = os.path.join(_get_output_path(part, feature), "pre_post_diff", "sig_cluster_masks", "signed")
+    os.makedirs(map_dir, exist_ok=True)
 
     return os.path.join(map_dir, filename)

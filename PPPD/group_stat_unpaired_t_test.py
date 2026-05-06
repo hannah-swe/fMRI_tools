@@ -18,7 +18,8 @@ import warnings
 
 # --- Script configuration:
 task = "rest"
-run = "run-01" # "run-01" == pre, "run-02" == post
+run = "run-02" # "run-01" == pre, "run-02" == post
+part = None # supported: None, 1, 2 (None: all subjects; part 1: subjects < 100; part 2: subjects >= 100)
 feature = "seed_based" # supported features: "falff", "seed_based", "alff"
 seed = "OperculumOP4L" # List of supported seeds:
                                     # "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
@@ -63,7 +64,21 @@ participants_df["subject_id"] = participants_df["participant_id"].apply(lambda x
 deriv_dir = _get_derivatives_path(feature)
 
 # get output path
-output_dir = _get_output_path(feature)
+output_dir = _get_output_path(part, feature)
+
+# --- Choose subjects depending on experimental part:
+if part is None:
+    selected_subs = list(subs)
+elif part == 1:
+    selected_subs = [s for s in subs if s < 100]
+elif part == 2:
+    selected_subs = [s for s in subs if s >= 100]
+else:
+    raise ValueError("part must be None, 1, or 2")
+# exclude subjects
+selected_subs = [s for s in selected_subs if s not in subjects_to_exclude]
+print(f"Selected part: {part if part is not None else 'all'}")
+print(f"Selected subjects before loading: {len(selected_subs)}")
 
 
 # --- Load data:
