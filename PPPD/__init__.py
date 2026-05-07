@@ -1,4 +1,5 @@
 import os
+import yaml
 import pandas as pd
 import nibabel as nib
 import numpy as np
@@ -7,7 +8,6 @@ from nilearn.image import load_img
 from nilearn.reporting import get_clusters_table
 from scipy.spatial.distance import cdist
 from nilearn.datasets import fetch_atlas_juelich
-from scipy.spatial.distance import cdist
 
 
 SUPPORTED_TASKS = ["rest"]
@@ -21,12 +21,17 @@ SUPPORTED_SEEDS = ["InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "Insu
 SUPPORTED_MASKS = ["dmn", "vvn"]
 
 
-# Path to folder with all HALFpipe working directories
-analysis_path = '/data_wgs04/ag-sensomotorik/PPPD/analysis/'
-raw_data_path = '/data_wgs04/ag-sensomotorik/PPPD/data/all_subjects1/'
-output_path = '/data_wgs04/ag-sensomotorik/PPPD/analysis/group_level/'
-mask_path = '/data_wgs04/ag-sensomotorik/PPPD/masks/'
-aal_path='/home/hannahschewe/nilearn_data/aal_3v2/'
+# Load config.yml
+PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+config_file = os.path.join(PROJECT_DIR, "config.yml")
+with open(config_file, "r") as f:
+    config = yaml.safe_load(f)
+
+analysis_path = config["analysis_path"]
+raw_data_path = config["raw_data_path"]
+output_path = config["output_path"]
+mask_path = config["mask_path"]
+aal_path = config["aal_path"]
 
 
 # Gets the path for analysis folder based on the selected feature
