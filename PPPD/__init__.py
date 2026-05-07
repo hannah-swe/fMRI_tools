@@ -13,11 +13,15 @@ from nilearn.datasets import fetch_atlas_juelich
 SUPPORTED_TASKS = ["rest"]
 SUPPORTED_FEATURES = ["seed_based", "falff", "alff"]
 SUPPORTED_RUNS = ["run-01", "run-02"]
-SUPPORTED_SEEDS = ["InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
+SUPPORTED_SEEDS_1 = ["InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
                    "InsulaOP3RAnat", "InsulaOP3Sphere",
                    "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",
                    "OperculumOP1L", "OperculumOP1R", "OperculumOP2L", "OperculumOP2R", "OperculumOP4L", "OperculumOP4R",
                    "Precuneus"]
+SUPPORTED_SEEDS_2 = ["CSv", "CSvR",
+                     "V1L", "V1R", "V2L", "V2R", "V5L", "V5R", "V6L", "V6R",
+                     "VermisUvulaL", "VermisVII"]
+SUPPORTED_SEEDS = SUPPORTED_SEEDS_1 + SUPPORTED_SEEDS_2
 SUPPORTED_MASKS = ["dmn", "vvn"]
 
 
@@ -35,24 +39,39 @@ aal_path = config["aal_path"]
 
 
 # Gets the path for analysis folder based on the selected feature
-def _get_data_path(feature):
+def _get_data_path(feature, seed=None):
     if feature not in SUPPORTED_FEATURES:
         raise ValueError(f"Unsupported feature: {feature}")
+
     if feature == "seed_based":
-        return os.path.join(analysis_path, "both_parts_seed1")
+        if seed is None:
+            raise ValueError("For feature = 'seed_based', a seed must be provided")
+        if seed in SUPPORTED_SEEDS_1:
+            return os.path.join(analysis_path, "both_parts_seed1")
+        if seed in SUPPORTED_SEEDS_2:
+            return os.path.join(analysis_path, "both_parts_seed2")
+        raise ValueError(f"Unsupported seed: {seed}")
+
     if feature == "falff":
         return os.path.join(analysis_path, "both_parts_falff")
     if feature == "alff":
         return os.path.join(analysis_path, "both_parts_falff")
+
     return None
 
 
 # Gets the part for the derivatives folder based on the selected feature
-def _get_derivatives_path(feature):
+def _get_derivatives_path(feature, seed=None):
     if feature not in SUPPORTED_FEATURES:
         raise ValueError(f"Unsupported feature: {feature}")
+
     if feature == "seed_based":
-        return os.path.join(analysis_path, "both_parts_seed1", "derivatives", "halfpipe")
+        if seed in SUPPORTED_SEEDS_1:
+            return os.path.join(analysis_path, "both_parts_seed1", "derivatives", "halfpipe")
+        if seed in SUPPORTED_SEEDS_2:
+            return os.path.join(analysis_path, "both_parts_seed2", "derivatives", "halfpipe")
+        raise ValueError(f"Unsupported seed: {seed}")
+
     if feature == "falff":
         return os.path.join(analysis_path, "both_parts_falff", "derivatives", "halfpipe")
     if feature == "alff":
@@ -110,26 +129,51 @@ def _get_mask_filename(subject_id, task, run, feature, seed=None):
 
 
 # Gets output path
-def _get_output_path(part, feature):
-    if part is None and feature == "seed_based":
-        folder = "both_parts_seed1"
-    elif part is None and feature == "falff":
-        folder = "both_parts_falff"
-    elif part is None and feature == "alff":
-        folder = "both_parts_alff"
-    elif part == 1 and feature == "seed_based":
-        folder = "part1_seed1"
-    elif part == 2 and feature == "seed_based":
-        folder = "part2_seed1"
-    elif part == 1 and feature == "falff":
-        folder = "part1_falff"
-    elif part == 2 and feature == "falff":
-        folder = "part2_falff"
+def _get_output_path(part, feature, seed=None):
+    if feature == "seed_based":
+        if seed is None:
+            raise ValueError("For feature='seed_based', you must provide a seed.")
+        if seed in SUPPORTED_SEEDS_1:
+            seed_folder = "seed1"
+        elif seed in SUPPORTED_SEEDS_2:
+            seed_folder = "seed2"
+        else:
+            raise ValueError(f"Unsupported seed: {seed}")
+
+    if part is None:
+        if feature == "seed_based":
+            folder = f"both_parts_{seed_folder}"
+        elif feature == "falff":
+            folder = "both_parts_falff"
+        elif feature == "alff":
+            folder = "both_parts_alff"
+        else:
+            raise ValueError(f"Unsupported feature: {feature}")
+
+    elif part == 1:
+        if feature == "seed_based":
+            folder = f"part1_{seed_folder}"
+        elif feature == "falff":
+            folder = "part1_falff"
+        elif feature == "alff":
+            folder = "part1_alff"
+        else:
+            raise ValueError(f"Unsupported feature: {feature}")
+
+    elif part == 2:
+        if feature == "seed_based":
+            folder = f"part2_{seed_folder}"
+        elif feature == "falff":
+            folder = "part2_falff"
+        elif feature == "alff":
+            folder = "part2_alff"
+        else:
+            raise ValueError(f"Unsupported feature: {feature}")
+
     else:
-        raise ValueError(f"Unsupported combination: part = {part}, feature = {feature}")
+        raise ValueError(f"Unsupported part: {part}")
     full_output_path = os.path.join(output_path, folder)
     os.makedirs(full_output_path, exist_ok=True)
-
     return full_output_path
 
 

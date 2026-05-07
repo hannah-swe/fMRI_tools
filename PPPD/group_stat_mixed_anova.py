@@ -21,12 +21,15 @@ task = "rest"
 runs = ["run-01", "run-02"] # pre, post
 part = None # supported: None, 1, 2 (None: all subjects; part 1: subjects < 100; part 2: subjects >= 100)
 feature = "seed_based" # supported features: "falff", "seed_based", "alff"
-seed = "InsulaId1L" # List of supported seeds:
+seed = "CSv" # List of supported seeds:
                                     # "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
                                     # "InsulaOP3RAnat", "InsulaOP3Sphere",
                                     # "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",
                                     # "OperculumOP1L", "OperculumOP1R", "OperculumOP2L", "OperculumOP2R", "OperculumOP4L", "OperculumOP4R",
-                                    # "Precuneus"
+                                    # "Precuneus",
+                                    # "CSv", "CSvR",
+                                    # "V1L", "V1R", "V2L", "V2R", "V5L", "V5R", "V6L", "V6R",
+                                    # "VermisUvulaL", "VermisVII"
 group_comparison = "pat>HC" # supported comparisons: "pat>HC", "HC>pat"
 # mask settings
 mask_strategy = "subject_based" # supported strategies: "subject_based", "predefined"
@@ -38,17 +41,17 @@ n_perm = 5000
 
 # --- Get all directories and participants.tsv:
 # path to halfpipe derivatives directory
-base_dir = _get_data_path(feature)
+base_dir = _get_data_path(feature, seed)
 
 # read participants.tsv
 participants_df = _get_participants_tsv()
 participants_df["subject_id"] = participants_df["participant_id"].apply(lambda x: f"sub-{x:03d}")
 
 # get derivatives path
-deriv_dir = _get_derivatives_path(feature)
+deriv_dir = _get_derivatives_path(feature, seed)
 
 # get output path
-output_dir = _get_output_path(part, feature)
+output_dir = _get_output_path(part, feature, seed)
 output_dir = os.path.join(output_dir, "pre_post_diff")
 os.makedirs(output_dir, exist_ok=True)
 

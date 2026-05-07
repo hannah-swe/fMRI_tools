@@ -26,14 +26,17 @@ seed = "InsulaOP3RAnat" # List of supported seeds:
                                     # "InsulaOP3RAnat", "InsulaOP3Sphere",
                                     # "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",
                                     # "OperculumOP1L", "OperculumOP1R", "OperculumOP2L", "OperculumOP2R", "OperculumOP4L", "OperculumOP4R",
-                                    # "Precuneus"
+                                    # "Precuneus",
+                                    # "CSv", "CSvR",
+                                    # "V1L", "V1R", "V2L", "V2R", "V5L", "V5R", "V6L", "V6R",
+                                    # "VermisUvulaL", "VermisVII"
 group_comparison = "pat>HC" # supported comparisons: "pat>HC", "HC>pat"
 # mask settings
 mask_strategy = "subject_based" # supported strategies: "subject_based", "predefined"
 predefined_mask = "vvn" # supported masks: "dmn", "vvn"
 threshold_mask = 0.8 # only used if mask_strategy == "subject_based"
 # number of permutations for non-parametric cluster-based permutation test
-n_perm = 1000
+n_perm = 10000
 
 
 # --- Define the file suffix
@@ -54,17 +57,17 @@ file_suffix = f"{file_suffix}_{mask_label}"
 
 # --- Get all directories and participants.tsv:
 # path to halfpipe derivatives directory
-base_dir = _get_data_path(feature)
+base_dir = _get_data_path(feature, seed)
 
 # read participants.tsv
 participants_df = _get_participants_tsv()
 participants_df["subject_id"] = participants_df["participant_id"].apply(lambda x: f"sub-{x:03d}")
 
 # get derivatives path
-deriv_dir = _get_derivatives_path(feature)
+deriv_dir = _get_derivatives_path(feature, seed)
 
 # get output path
-output_dir = _get_output_path(part, feature)
+output_dir = _get_output_path(part, feature, seed)
 
 
 # --- Choose subjects depending on experimental part:
