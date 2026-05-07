@@ -1,0 +1,6 @@
+# Path to folder with all HALFpipe working directories
+analysis_path: /data_wgs04/ag-sensomotorik/PPPD/analysis/
+raw_data_path: /data_wgs04/ag-sensomotorik/PPPD/data/all_subjects1/
+output_path: /data_wgs04/ag-sensomotorik/PPPD/analysis/YOUR_OUTPUT_FOLDER
+mask_path: /data_wgs04/ag-sensomotorik/PPPD/masks/
+aal_path: /home/hannahschewe/nilearn_data/aal_3v2/
