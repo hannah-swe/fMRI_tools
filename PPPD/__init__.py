@@ -418,7 +418,7 @@ def _get_posthoc_cluster_mask(feature, group_comparison, direction, part=None, s
         filename = f"{feature}_{seed}_{group_comparison}_{part_label}_{direction}_clusters_mask.nii.gz"
     else:
         filename = f"{feature}_{group_comparison}_{part_label}_{direction}_clusters_mask.nii.gz"
-    mask_dir = os.path.join(_get_output_path(part, feature), "pre_post_diff", "sig_cluster_masks", f"{direction}")
+    mask_dir = os.path.join(_get_output_path(part, feature, seed), "pre_post_diff", "sig_cluster_masks", f"{direction}")
     os.makedirs(mask_dir, exist_ok=True)
 
     return os.path.join(mask_dir, filename)
@@ -437,7 +437,7 @@ def _get_signed_posthoc_map(feature, group_comparison, part=None, seed=None,):
     else:
         filename = f"{feature}_{group_comparison}_{part_label}_signed_logp_clustermass_fwer05.nii.gz"
 
-    map_dir = os.path.join(_get_output_path(part, feature), "pre_post_diff", "sig_cluster_masks", "signed")
+    map_dir = os.path.join(_get_output_path(part, feature, seed), "pre_post_diff", "sig_cluster_masks", "signed")
     os.makedirs(map_dir, exist_ok=True)
 
     return os.path.join(map_dir, filename)

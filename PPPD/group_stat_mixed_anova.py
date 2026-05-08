@@ -13,6 +13,7 @@ from nilearn.masking import intersect_masks
 import numpy as np
 import pandas as pd
 import warnings
+from scipy import ndimage
 import tempfile
 
 
@@ -21,7 +22,7 @@ task = "rest"
 runs = ["run-01", "run-02"] # pre, post
 part = None # supported: None, 1, 2 (None: all subjects; part 1: subjects < 100; part 2: subjects >= 100)
 feature = "seed_based" # supported features: "falff", "seed_based", "alff"
-seed = "CSv" # List of supported seeds:
+seed = "VermisVII" # List of supported seeds:
                                     # "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
                                     # "InsulaOP3RAnat", "InsulaOP3Sphere",
                                     # "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",
@@ -261,7 +262,8 @@ with warnings.catch_warnings():
         n_perm=n_perm,
         two_sided_test=True,
         threshold=0.001,         # cluster-forming threshold in p-scale
-        n_jobs=8,                # adapt to your system
+        random_state=42,         # pseudo randomization to get reproducible results
+        n_jobs=8,                # adapt to the system
         verbose=1,
     )
 
@@ -293,7 +295,8 @@ with warnings.catch_warnings():
     else:
         print("No clusters survive permutation cluster-mass FWER correction.")
 
-# Get cluster table with aal brain atlas
+
+# --- Get cluster table with aal brain atlas
 logp_mass_thr_float = math_img("img.astype(float)", img=signed_logp_mass_thr)
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
@@ -303,6 +306,42 @@ with warnings.catch_warnings():
         cluster_threshold=0,
         two_sided=True,
     )
+
+# get data
+data = signed_logp_mass_thr.get_fdata()
+# create binary threshold mask, matching two_sided=True
+threshold_mask = np.abs(data) > neglog_alpha_05
+# label connected clusters
+labeled_data, n_clusters = ndimage.label(threshold_mask)
+
+# compute p-value for each cluster
+cluster_p_values = []
+for cluster_id in cluster_table_perm_mass["Cluster ID"]:
+    cluster_mask = labeled_data == cluster_id
+    if not np.any(cluster_mask):
+        cluster_p_values.append(np.nan)
+        continue
+    cluster_logp = np.max(np.abs(data[cluster_mask]))
+    cluster_p = 10 ** (-cluster_logp)
+    cluster_p_values.append(cluster_p)
+
+# insert p-value column after Peak Stat
+peak_stat_idx = cluster_table_perm_mass.columns.get_loc("Peak Stat") + 1
+cluster_table_perm_mass.insert(
+    peak_stat_idx,
+    "p-value",
+    cluster_p_values
+)
+cluster_table_perm_mass = cluster_table_perm_mass.rename(columns={
+    "Cluster ID": "Cluster",
+    "Cluster Size (mm3)": "Size (mm3)",
+})
+
+# save cluster table
+cluster_table_dir = os.path.join(output_dir, "cluster_tables")
+os.makedirs(cluster_table_dir, exist_ok=True)
+cluster_table_path = os.path.join(cluster_table_dir, f"{file_suffix}_cluster_table_perm_mass.csv")
+cluster_table_perm_mass.to_csv(cluster_table_path, index=False)
 
 
 # --- Save significant cluster masks for post-hoc extraction

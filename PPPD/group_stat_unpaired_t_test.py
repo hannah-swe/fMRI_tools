@@ -21,7 +21,7 @@ task = "rest"
 run = "run-01" # "run-01" == pre, "run-02" == post
 part = None # supported: None, 1, 2 (None: all subjects; part 1: subjects < 100; part 2: subjects >= 100)
 feature = "seed_based" # supported features: "falff", "seed_based", "alff"
-seed = "InsulaOP3RAnat" # List of supported seeds:
+seed = "V5L" # List of supported seeds:
                                     # "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
                                     # "InsulaOP3RAnat", "InsulaOP3Sphere",
                                     # "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",
@@ -226,79 +226,6 @@ with warnings.catch_warnings():
     )
 report_v1.save_as_html(os.path.join(output_dir, "01_uncorrected", f"glm_report_{file_suffix}_uncorrected_p001_cluster10.html"))
 
-'''
-# Version 2: thresholding z-statistic image with a false discovery rate < .05, no cluster-level threshold
-thresholded_map2, threshold2 = threshold_stats_img(z_map, alpha=0.05, height_control="fdr", two_sided=False)
-print(f"The FDR=.05 threshold is {threshold2:.3g}")
-thr2_data = thresholded_map2.get_fdata()
-if np.any(thr2_data != 0):
-    plot_stat_map(thresholded_map2, display_mode='mosaic', cmap="inferno", threshold=threshold2, vmin=threshold2,
-                  title=f"z map {base_title}; fdr < .05")
-    plt.show()
-    fig = plt.figure(figsize=(9, 5))
-    display = plot_glass_brain(thresholded_map2, cmap="inferno", threshold=threshold2, vmin=threshold2,
-                               figure=fig, title=None)
-    display.frame_axes.figure.suptitle(f"z map {base_title}; fdr < .05")
-    display.savefig(os.path.join(output_dir, "02_fdr", f"{file_suffix}_fdr05.png"))
-else:
-    print("No suprathreshold clusters; skipping plots.")
-# get cluster table with anatomical labels
-with warnings.catch_warnings():
-    warnings.simplefilter("ignore")
-    cluster_table2 = _get_cluster_table_with_aal_labels(
-        stat_img=thresholded_map2,
-        stat_threshold=threshold2,
-        two_sided=False
-    )
-# create model report as html regardless if suprathreshold clusters are left or not
-with warnings.catch_warnings():
-    warnings.simplefilter("ignore")
-    report_v2 = second_level_model_unpaired.generate_report(
-        contrasts="group",
-        title=f"GLM report | {base_title} | fdr < .05",
-        height_control="fdr",
-        two_sided=False,
-        plot_type="glass",
-    )
-report_v2.save_as_html(os.path.join(output_dir, "02_fdr", f"glm_report_{file_suffix}_fdr05.html"))
-'''
-
-'''
-# Version 3: FWER <.05 (Family-Wise Error Rate) and no cluster-level threshold
-thresholded_map3, threshold3 = threshold_stats_img(z_map, alpha=0.05, height_control="bonferroni")
-print(f"The p<.05 Bonferroni-corrected threshold is {threshold3:.3g}")
-thr3_data = thresholded_map3.get_fdata()
-# plot thresholded maps if there are any voxels/clusters left
-if np.any(thr3_data != 0):
-    plot_stat_map(thresholded_map3, display_mode='mosaic', cmap="inferno", threshold=threshold3, vmin=threshold3,
-                  title=f"z map {base_title}; fwer < .05")
-    plt.show()
-    display = plot_glass_brain(thresholded_map3, cmap="inferno", threshold=threshold3, vmin=threshold3,
-                               title=f"z map {base_title}; fwer < .05")
-    display.savefig(os.path.join(output_dir, "03_bonferroni", f"{file_suffix}_bonferroni_fwer05.png"))
-else:
-    print("No voxels survive Bonferroni correction; skipping plots.")
-# get cluster table with anatomical labels
-with warnings.catch_warnings():
-    warnings.simplefilter("ignore")
-    cluster_table3 = _get_cluster_table_with_aal_labels(
-        stat_img=thresholded_map3,
-        stat_threshold=threshold3,
-        two_sided=False
-    )
-# create model report as html regardless if suprathreshold clusters are left or not
-with warnings.catch_warnings():
-    warnings.simplefilter("ignore")
-    report_v3 = second_level_model_unpaired.generate_report(
-        contrasts="group",
-        title=f"GLM report | {base_title} | Bonferroni FWER < .05",
-        height_control="bonferroni",
-        alpha=0.05,
-        two_sided=False,
-    )
-report_v3.save_as_html(os.path.join(output_dir, "03_bonferroni", f"glm_report_{file_suffix}_bonferroni_fwer05.html"))
-'''
-
 
 # --- NON-PARAMETRIC TESTS: permutation inference with cluster-level correction:
 # threshold is in p-scale, not z-scale; threshold=0.001 corresponds to a cluster-forming threshold of p < .001
@@ -313,7 +240,8 @@ with warnings.catch_warnings():
         n_perm=n_perm,
         two_sided_test=False,
         threshold=0.001,         # cluster-forming threshold in p-scale
-        n_jobs=40,                # adapt to your system
+        random_state=42,
+        n_jobs=8,                # adapt to your system
         verbose=1,
     )
 # Save raw permutation outputs

@@ -16,9 +16,9 @@ import seaborn as sns
 # --- Script configuration:
 task = "rest"
 runs = ["run-01", "run-02"] # pre, post
-part = 1 # supported: None, 1, 2 (None: all subjects; part 1: subjects < 100; part 2: subjects >= 100)
+part = None # supported: None, 1, 2 (None: all subjects; part 1: subjects < 100; part 2: subjects >= 100)
 feature = "seed_based" # supported features: "falff", "seed_based", "alff"
-seed = "CSv" # List of supported seeds:
+seed = "CSvR" # List of supported seeds:
                                     # "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
                                     # "InsulaOP3RAnat", "InsulaOP3Sphere",
                                     # "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",
@@ -47,7 +47,7 @@ deriv_dir = _get_derivatives_path(feature, seed)
 
 # get output path
 output_dir = _get_output_path(part, feature, seed)
-output_dir = os.path.join(output_dir, "pre_post_diff", "post-hoc")
+output_dir = os.path.join(output_dir, "pre_post_diff")
 os.makedirs(output_dir, exist_ok=True)
 
 
@@ -128,52 +128,93 @@ print("Loaded subjects:", included_df["subject_id"].nunique())
 mask_path = _get_posthoc_cluster_mask(feature=feature, seed=seed, group_comparison=group_comparison, part=part,
                                       direction=direction)
 cluster_mask = nib.load(mask_path)
-# get signed cluster mask for p-values from voxel-wise ANOVA
-signed_map_path = _get_signed_posthoc_map(feature=feature, seed=seed, group_comparison=group_comparison, part=part)
-signed_logp_mass_thr = nib.load(signed_map_path)
+
+
+# --- Load original permutation cluster table
+if feature == "seed_based":
+    table_file_suffix = f"{feature}_{seed}_{group_comparison}"
+else:
+    table_file_suffix = f"{feature}_{group_comparison}"
+part_label = "all" if part is None else f"{part}"
+table_file_suffix = f"{table_file_suffix}_{part_label}"
+cluster_table_path = os.path.join(output_dir, "cluster_tables", f"{table_file_suffix}_cluster_table_perm_mass.csv")
+cluster_table_perm_mass = pd.read_csv(cluster_table_path)
+
+# Keep only clusters matching selected direction
+if direction == "negative":
+    relevant_clusters = cluster_table_perm_mass[
+        cluster_table_perm_mass["Peak Stat"] < 0
+    ].copy()
+elif direction == "positive":
+    relevant_clusters = cluster_table_perm_mass[
+        cluster_table_perm_mass["Peak Stat"] > 0
+    ].copy()
+else:
+    raise ValueError("direction must be 'positive' or 'negative'")
+
+relevant_clusters = relevant_clusters.reset_index(drop=True)
+
+print("Loaded permutation cluster table:")
+print(cluster_table_path)
+print("Relevant clusters from table:", len(relevant_clusters))
+
 
 # --- Split significant mask into single clusters:
 mask_data = cluster_mask.get_fdata() != 0
-structure = ndimage.generate_binary_structure(3, 3)  # 26-neighbor connectivity
+
+# Use same connectivity consistently
+structure = ndimage.generate_binary_structure(3, 3)
 labeled_data, n_clusters = ndimage.label(mask_data, structure=structure)
-print("Number of clusters:", n_clusters)
+
+print("Number of clusters in mask:", n_clusters)
 if n_clusters == 0:
     raise ValueError("No clusters found in mask.")
+if n_clusters != len(relevant_clusters):
+    print(
+        "WARNING: Number of clusters in mask does not match number of clusters "
+        "in permutation table for this direction."
+    )
+    print(f"Mask clusters: {n_clusters}")
+    print(f"Table clusters: {len(relevant_clusters)}")
 
-single_cluster_dir = os.path.join(output_dir, "single_cluster_masks")
+single_cluster_dir = os.path.join(output_dir, "post-hoc", "single_cluster_masks")
 os.makedirs(single_cluster_dir, exist_ok=True)
 
-# get cluster mask with aal label
 cluster_info = []
 cluster_mask_paths = []
+
 for cluster_id in range(1, n_clusters + 1):
     single_cluster_data = (labeled_data == cluster_id).astype(np.uint8)
     n_voxels = int(single_cluster_data.sum())
 
-    # get cluster-level corrected p-value
-    cluster_logp = np.max(np.abs(signed_logp_mass_thr.get_fdata()[labeled_data == cluster_id]))
-    cluster_p = 10 ** (-cluster_logp)
-    print(
-        f"Cluster {cluster_id}: "
-        f"-log10(p) = {cluster_logp:.3f}, "
-        f"p = {cluster_p:.5f}"
-    )
+    # Get p-value and peak stat from original permutation cluster table
+    if cluster_id - 1 < len(relevant_clusters):
+        table_row = relevant_clusters.iloc[cluster_id - 1]
+        cluster_peak_stat = table_row["Peak Stat"]
+        cluster_p = table_row["p-value"]
+        # Optional: use table cluster size if available
+        table_cluster_id = table_row["Cluster"]
+        print(
+            f"Cluster {cluster_id}: "
+            f"table Cluster ID = {table_cluster_id}, "
+            f"Peak Stat = {cluster_peak_stat:.3f}, "
+            f"p = {cluster_p:.5f}"
+        )
+    else:
+        cluster_peak_stat = np.nan
+        cluster_p = np.nan
+        table_cluster_id = np.nan
+        print(f"Cluster {cluster_id}: no matching row found in permutation table.")
 
-    # get single cluster image
-    single_cluster_img = nib.Nifti1Image(
-        single_cluster_data,
-        affine=cluster_mask.affine,
-        header=cluster_mask.header
-    )
+    # Get single cluster image
+    single_cluster_img = nib.Nifti1Image(single_cluster_data, affine=cluster_mask.affine, header=cluster_mask.header)
     single_cluster_img.set_data_dtype(np.uint8)
 
-    # get AAL label
+    # Get AAL label
     try:
-        cluster_table = _get_cluster_table_with_aal_labels(stat_img=single_cluster_img, stat_threshold=0.5,
-                                                           cluster_threshold=0, two_sided=False,)
-        # first/main AAL label
+        cluster_table = _get_cluster_table_with_aal_labels( stat_img=single_cluster_img, stat_threshold=0.5,
+                                                            cluster_threshold=0, two_sided=False)
         aal_label = cluster_table.iloc[0]["aal_label"]
-        # sanitize for filenames
         aal_label_clean = (
             aal_label
             .replace(" ", "_")
@@ -184,22 +225,22 @@ for cluster_id in range(1, n_clusters + 1):
         print(f"Could not get AAL label for cluster {cluster_id}: {e}")
         aal_label_clean = f"cluster-{cluster_id:02d}"
 
-    # save cluster mask
+    # Save cluster mask
     cluster_filename = f"{file_suffix}_{aal_label_clean}.nii.gz"
     cluster_path = os.path.join(single_cluster_dir, cluster_filename)
     single_cluster_img.to_filename(cluster_path)
-    cluster_mask_paths.append(cluster_path)
 
+    cluster_mask_paths.append(cluster_path)
     cluster_info.append({
         "cluster_id": cluster_id,
+        "table_cluster_id": table_cluster_id,
         "aal_label": aal_label_clean,
         "direction": direction,
         "n_voxels": n_voxels,
-        "logp": cluster_logp,
+        "peak_stat": cluster_peak_stat,
         "p_value": cluster_p,
         "path": cluster_path,
     })
-
     print(
         f"Saved cluster {cluster_id}: "
         f"{aal_label_clean} ({n_voxels} voxels)"
@@ -246,7 +287,7 @@ diff_df["post_minus_pre"] = diff_df["post"] - diff_df["pre"]
 
 
 # --- Plots:
-plot_dir = os.path.join(output_dir, "plots")
+plot_dir = os.path.join(output_dir, "post-hoc", "plots")
 os.makedirs(plot_dir, exist_ok=True)
 sns.set_theme(style="ticks")
 sns.set_context("talk")
