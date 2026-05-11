@@ -327,11 +327,7 @@ for cluster_id in cluster_table_perm_mass["Cluster ID"]:
 
 # insert p-value column after Peak Stat
 peak_stat_idx = cluster_table_perm_mass.columns.get_loc("Peak Stat") + 1
-cluster_table_perm_mass.insert(
-    peak_stat_idx,
-    "p-value",
-    cluster_p_values
-)
+cluster_table_perm_mass.insert(peak_stat_idx, "p-value", cluster_p_values)
 cluster_table_perm_mass = cluster_table_perm_mass.rename(columns={
     "Cluster ID": "Cluster",
     "Cluster Size (mm3)": "Size (mm3)",

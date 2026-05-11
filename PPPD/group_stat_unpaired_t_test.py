@@ -14,6 +14,7 @@ from nilearn.masking import intersect_masks
 import numpy as np
 import pandas as pd
 import warnings
+import SUITPy as suit
 
 
 # --- Script configuration:
@@ -21,7 +22,7 @@ task = "rest"
 run = "run-01" # "run-01" == pre, "run-02" == post
 part = None # supported: None, 1, 2 (None: all subjects; part 1: subjects < 100; part 2: subjects >= 100)
 feature = "seed_based" # supported features: "falff", "seed_based", "alff"
-seed = "V5L" # List of supported seeds:
+seed = "OperculumOP4L" # List of supported seeds:
                                     # "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
                                     # "InsulaOP3RAnat", "InsulaOP3Sphere",
                                     # "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",
@@ -244,39 +245,18 @@ with warnings.catch_warnings():
         n_jobs=8,                # adapt to your system
         verbose=1,
     )
-# Save raw permutation outputs
-# perm_out["t"].to_filename(os.path.join(output_dir, "04_nonparametric", f"t_map_{file_suffix}_perm.nii.gz"))
-# perm_out["logp_max_t"].to_filename(os.path.join(output_dir, "04_nonparametric", f"logp_max_t_{file_suffix}_perm.nii.gz"))
-# perm_out["logp_max_size"].to_filename(os.path.join(output_dir, "04_nonparametric", f"logp_max_size_{file_suffix}_perm.nii.gz"))
-# perm_out["logp_max_mass"].to_filename(os.path.join(output_dir, "04_nonparametric", f"logp_max_mass_{file_suffix}_perm.nii.gz"))
 
 # Convert corrected -log10(p) maps into thresholded views (corrected p < .05  <=>  -log10(p) > 1.30103)
 neglog_alpha_05 = -np.log10(0.05)
-logp_size_thr = threshold_img(perm_out["logp_max_size"], threshold=neglog_alpha_05, two_sided=False)
 logp_mass_thr = threshold_img(perm_out["logp_max_mass"], threshold=neglog_alpha_05, two_sided=False)
-logp_voxel_thr = threshold_img(perm_out["logp_max_t"], threshold=neglog_alpha_05, two_sided=False)
 
-# Plot voxel-level corrected map
-if np.any(logp_voxel_thr.get_fdata() != 0):
-    fig = plt.figure(figsize=(9, 5))
-    display = plot_glass_brain(logp_voxel_thr, cmap="inferno", threshold=neglog_alpha_05, vmin=neglog_alpha_05,
-                               figure=fig, title=None, colorbar=True)
-    display.frame_axes.figure.suptitle(f"Permutation test voxel-level FWER \n {base_title} | corrected p < .05")
-    # display.savefig(os.path.join(output_dir, "04_nonparametric", f"{file_suffix}_perm_voxel_fwer05.png"))
-else:
-    print("No voxels survive permutation voxel-level FWER correction.")
+# Save significant cluster mask
+perm_mask_dir = os.path.join(output_dir, "sig_cluster_masks")
+os.makedirs(perm_mask_dir, exist_ok=True)
+logp_mass_path = os.path.join(perm_mask_dir, f"{file_suffix}_logp_clustermass_fwer05.nii.gz")
+logp_mass_thr.to_filename(logp_mass_path)
 
-# Plot cluster-size corrected map
-if np.any(logp_size_thr.get_fdata() != 0):
-    fig = plt.figure(figsize=(9, 5))
-    display = plot_glass_brain(logp_size_thr, cmap="inferno", threshold=neglog_alpha_05, vmin=neglog_alpha_05,
-                               figure=fig, title=None, colorbar=True)
-    display.frame_axes.figure.suptitle(f"Permutation test cluster-size FWER \n {base_title} | corrected p < .05")
-    display.savefig(os.path.join(output_dir, "04_nonparametric", f"{file_suffix}_perm_clustersize_fwer05.png"))
-else:
-    print("No clusters survive permutation cluster-size FWER correction.")
-
-# --- Plot cluster-mass corrected map
+# Plot cluster-mass corrected map
 if np.any(logp_mass_thr.get_fdata() != 0):
     data = logp_mass_thr.get_fdata()
     visible = data[data > neglog_alpha_05]
@@ -295,37 +275,80 @@ else:
 
 # --- Get cluster table with aal and julich brain atlas
 # create a binary/significant map from cluster-size corrected output
-sig_cluster_size_map = math_img(f"img > {neglog_alpha_05}", img=perm_out["logp_max_mass"])
+sig_cluster_mass_map = math_img(f"img > {neglog_alpha_05}", img=perm_out["logp_max_mass"])
+logp_mass_thr_float = math_img("img.astype(float)", img=perm_out["logp_max_mass"])
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
-    cluster_table_perm_size = _get_cluster_table_with_aal_labels(
-        stat_img=sig_cluster_size_map,
-        stat_threshold=0.5,   # binary image after math_img
+    cluster_table_perm_mass = _get_cluster_table_with_aal_labels(
+        stat_img=logp_mass_thr_float,
+        stat_threshold=neglog_alpha_05,   # binary image after math_img
         cluster_threshold=0,
         two_sided=False,
     )
+cluster_table_perm_mass["p-value"] = (10 ** (-cluster_table_perm_mass["Peak Stat"]))
+
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
-    cluster_table_perm_size_juelich = _get_cluster_table_with_juelich_prob_labels(
-        stat_img=sig_cluster_size_map,
-        stat_threshold=0.5,
+    cluster_table_perm_mass_juelich = _get_cluster_table_with_juelich_prob_labels(
+        stat_img=logp_mass_thr_float,
+        stat_threshold=neglog_alpha_05,
         cluster_threshold=0,
         two_sided=False,
         atlas_name="prob-2mm",
         top_n=5,
-        min_prob=0.0
+        min_prob=5.0
     )
-cols_aal = ["Cluster ID", "X", "Y", "Z", "Cluster Size (mm3)", "aal_label", "distance_mm"]
+
+# combine tables with aal and juelich label
+cols_aal = ["Cluster ID", "X", "Y", "Z", "Peak Stat", "p-value", "Cluster Size (mm3)", "aal_label", "distance_mm"]
 cols_juelich = ["Cluster ID", "juelich_top_probs"]
-cluster_table_combined = (cluster_table_perm_size[cols_aal]
+cluster_table_combined = (cluster_table_perm_mass[cols_aal]
     .merge(
-        cluster_table_perm_size_juelich[cols_juelich],
+        cluster_table_perm_mass_juelich[cols_juelich],
         on="Cluster ID",
         how="left"
     )
     .rename(columns={
         "Cluster ID": "Cluster",
+        "Peak Stat": "Stat",
         "Cluster Size (mm3)": "Size (mm3)",
         "juelich_top_probs": "juelich_label"
     })
 )
+
+# save cluster table
+cluster_table_dir = os.path.join(output_dir, "cluster_tables")
+os.makedirs(cluster_table_dir, exist_ok=True)
+cluster_table_path = os.path.join(cluster_table_dir, f"{file_suffix}_cluster_table_perm_mass.csv")
+cluster_table_combined.to_csv(cluster_table_path, index=False)
+
+
+
+'''
+# perm_out["logp_max_size"].to_filename(os.path.join(output_dir, "04_nonparametric", f"logp_max_size_{file_suffix}_perm.nii.gz"))
+# perm_out["logp_max_t"].to_filename(os.path.join(output_dir, "04_nonparametric", f"logp_max_t_{file_suffix}_perm.nii.gz"))
+
+logp_size_thr = threshold_img(perm_out["logp_max_size"], threshold=neglog_alpha_05, two_sided=False)
+logp_voxel_thr = threshold_img(perm_out["logp_max_t"], threshold=neglog_alpha_05, two_sided=False)
+
+# Plot voxel-level corrected map
+if np.any(logp_voxel_thr.get_fdata() != 0):
+    fig = plt.figure(figsize=(9, 5))
+    display = plot_glass_brain(logp_voxel_thr, cmap="inferno", threshold=neglog_alpha_05, vmin=neglog_alpha_05,
+                               figure=fig, title=None, colorbar=True)
+    display.frame_axes.figure.suptitle(f"Permutation test voxel-level FWER \n {base_title} | corrected p < .05")
+    # display.savefig(os.path.join(output_dir, "04_nonparametric", f"{file_suffix}_perm_voxel_fwer05.png"))
+else:
+    print("No voxels survive permutation voxel-level FWER correction.")
+
+
+# Plot cluster-size corrected map
+if np.any(logp_size_thr.get_fdata() != 0):
+    fig = plt.figure(figsize=(9, 5))
+    display = plot_glass_brain(logp_size_thr, cmap="inferno", threshold=neglog_alpha_05, vmin=neglog_alpha_05,
+                               figure=fig, title=None, colorbar=True)
+    display.frame_axes.figure.suptitle(f"Permutation test cluster-size FWER \n {base_title} | corrected p < .05")
+    display.savefig(os.path.join(output_dir, "04_nonparametric", f"{file_suffix}_perm_clustersize_fwer05.png"))
+else:
+    print("No clusters survive permutation cluster-size FWER correction.")
+'''
