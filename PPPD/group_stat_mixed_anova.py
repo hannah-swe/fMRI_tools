@@ -86,17 +86,15 @@ else:
     raise ValueError(f"Unknown group comparison: {group_comparison}")
 
 
-# --- Choose subjects depending on experimental part:
+# --- Choose subjects depending on experimental part and exclude subjects who participated in both parts:
 if part is None:
-    selected_subs = list(subs)
+    selected_subs = [s for s in subs if s not in subjects_to_exclude]
 elif part == 1:
     selected_subs = [s for s in subs if s < 100]
 elif part == 2:
     selected_subs = [s for s in subs if s >= 100]
 else:
     raise ValueError("part must be None, 1, or 2")
-# exclude subjects
-selected_subs = [s for s in selected_subs if s not in subjects_to_exclude]
 print(f"Selected part: {part if part is not None else 'all'}")
 print(f"Selected subjects before loading: {len(selected_subs)}")
 

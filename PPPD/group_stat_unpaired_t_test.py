@@ -14,13 +14,12 @@ from nilearn.masking import intersect_masks
 import numpy as np
 import pandas as pd
 import warnings
-import SUITPy as suit
 
 
 # --- Script configuration:
 task = "rest"
 run = "run-01" # "run-01" == pre, "run-02" == post
-part = None # supported: None, 1, 2 (None: all subjects; part 1: subjects < 100; part 2: subjects >= 100)
+part = 2 # supported: None, 1, 2 (None: all subjects; part 1: subjects < 100; part 2: subjects >= 100)
 feature = "seed_based" # supported features: "falff", "seed_based", "alff"
 seed = "OperculumOP4L" # List of supported seeds:
                                     # "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
@@ -71,17 +70,15 @@ deriv_dir = _get_derivatives_path(feature, seed)
 output_dir = _get_output_path(part, feature, seed)
 
 
-# --- Choose subjects depending on experimental part:
+# --- Choose subjects depending on experimental part and exclude subjects who participated in both parts:
 if part is None:
-    selected_subs = list(subs)
+    selected_subs = [s for s in subs if s not in subjects_to_exclude]
 elif part == 1:
     selected_subs = [s for s in subs if s < 100]
 elif part == 2:
     selected_subs = [s for s in subs if s >= 100]
 else:
     raise ValueError("part must be None, 1, or 2")
-# exclude subjects
-selected_subs = [s for s in selected_subs if s not in subjects_to_exclude]
 print(f"Selected part: {part if part is not None else 'all'}")
 print(f"Selected subjects before loading: {len(selected_subs)}")
 
@@ -93,11 +90,7 @@ included_subjects = []
 sub_mask_imgs = []
 
 # read subjects' derivatives data
-for s in subs:
-    # exclude subjects
-    if s in subjects_to_exclude:
-        continue
-
+for s in selected_subs:
     # get full subject id
     subject_id = f"sub-{s:03d}"
 
