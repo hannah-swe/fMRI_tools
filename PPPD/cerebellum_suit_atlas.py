@@ -13,7 +13,7 @@ from scipy import ndimage
 task = "rest"
 part = None # supported: None, 1, 2 (None: all subjects; part 1: subjects < 100; part 2: subjects >= 100)
 feature = "seed_based" # supported features: "falff", "seed_based", "alff"
-seed = "OperculumOP1R" # List of supported seeds:
+seed = "IPLPFL" # List of supported seeds:
                                     # "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
                                     # "InsulaOP3RAnat", "InsulaOP3Sphere",
                                     # "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",
@@ -23,7 +23,7 @@ seed = "OperculumOP1R" # List of supported seeds:
                                     # "V1L", "V1R", "V2L", "V2R", "V5L", "V5R", "V6L", "V6R",
                                     # "VermisUvulaL", "VermisVII"
 group_comparison = "pat>HC" # supported comparisons: "pat>HC", "HC>pat"
-pre_post_diff = False
+pre_post_diff = True
 # mask settings
 # mask_strategy = "subject_based" # supported strategies: "subject_based", "predefined"
 # predefined_mask = "vvn" # supported masks: "dmn", "vvn"
@@ -33,10 +33,6 @@ pre_post_diff = False
 # --- all directories
 # get data dir
 data_dir = _get_output_path(part, feature, seed)
-if pre_post_diff is True:
-    data_dir = os.path.join(data_dir, "pre_post_diff")
-
-sig_cluster_dir = os.path.join(data_dir, "sig_cluster_masks")
 
 # get output path to save results
 output_dir = os.path.join(data_dir, "cerebellum_labeling")
@@ -60,11 +56,20 @@ file_suffix = f"{file_suffix}_{part_label}"
 
 
 # --- Load significant cluster mask from previous analysis
-try:
-    stat_img = nib.load(os.path.join(sig_cluster_dir, f"{feature}_{seed}_{group_comparison}_submask-0.8_logp_clustermass_fwer05.nii.gz"))
-except FileNotFoundError:
-    stat_img = None
-    raise FileNotFoundError()
+if pre_post_diff is True:
+    sig_cluster_dir = os.path.join(data_dir, "pre_post_diff", "sig_cluster_masks", "signed")
+    try:
+        stat_img = nib.load(os.path.join(sig_cluster_dir, f"{feature}_{seed}_{group_comparison}_all_signed_logp_clustermass_fwer05.nii.gz"))
+    except FileNotFoundError:
+        stat_img = None
+        raise FileNotFoundError()
+else:
+    sig_cluster_dir = os.path.join(data_dir, "sig_cluster_masks")
+    try:
+        stat_img = nib.load(os.path.join(sig_cluster_dir, f"{feature}_{seed}_{group_comparison}_submask-0.8_logp_clustermass_fwer05.nii.gz"))
+    except FileNotFoundError:
+        stat_img = None
+        raise FileNotFoundError()
 
 
 # --- Get path to lut file and load atlas image
@@ -81,7 +86,12 @@ atlas_data = atlas_img.get_fdata().astype(int)
 
 # --- Threshold significant clusters
 neglog_alpha_05 = -np.log10(0.05)
-sig_mask = stat_data > neglog_alpha_05
+if pre_post_diff:
+    # signed map: positive and negative clusters
+    sig_mask = np.abs(stat_data) > neglog_alpha_05
+else:
+    # one-sided positive map
+    sig_mask = stat_data > neglog_alpha_05
 
 
 # --- Label connected clusters
@@ -122,6 +132,9 @@ for cluster_id in range(1, n_clusters + 1):
     # determine atlas regions overlapping with current cluster
     atlas_labels, counts = np.unique(atlas_data[cluster_mask], return_counts=True)
 
+    peak_logp = np.max(np.abs(stat_data[cluster_mask]))
+    cluster_p = 10 ** (-peak_logp)
+
     # loop over all overlapping atlas regions
     for label, count in zip(atlas_labels, counts):
         if label == 0:
@@ -135,7 +148,7 @@ for cluster_id in range(1, n_clusters + 1):
             "Overlap voxels": int(count),
             "Overlap %": 100 * count / cluster_size_vox,
             "Cluster Stat": np.max(stat_data[cluster_mask]),
-            "Cluster p-value": 10 ** (-np.max(stat_data[cluster_mask])),
+            "Cluster p-value": cluster_p,
         })
 
 # get table with overlap information
