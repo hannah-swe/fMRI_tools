@@ -22,7 +22,7 @@ task = "rest"
 runs = ["run-01", "run-02"] # pre, post
 part = None # supported: None, 1, 2 (None: all subjects; part 1: subjects < 100; part 2: subjects >= 100)
 feature = "seed_based" # supported features: "falff", "seed_based", "alff"
-seed = "VermisVII" # List of supported seeds:
+seed = "IPLPFL" # List of supported seeds:
                                     # "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
                                     # "InsulaOP3RAnat", "InsulaOP3Sphere",
                                     # "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",
@@ -37,7 +37,7 @@ mask_strategy = "subject_based" # supported strategies: "subject_based", "predef
 predefined_mask = "vvn" # supported masks: "dmn", "vvn"
 threshold_mask = 0.8 # only used if mask_strategy == "subject_based"
 # number of permutations for non-parametric cluster-based permutation test
-n_perm = 5000
+n_perm = 10000
 
 
 # --- Get all directories and participants.tsv:
@@ -328,6 +328,7 @@ peak_stat_idx = cluster_table_perm_mass.columns.get_loc("Peak Stat") + 1
 cluster_table_perm_mass.insert(peak_stat_idx, "p-value", cluster_p_values)
 cluster_table_perm_mass = cluster_table_perm_mass.rename(columns={
     "Cluster ID": "Cluster",
+    "Peak Stat": "Stat",
     "Cluster Size (mm3)": "Size (mm3)",
 })
 

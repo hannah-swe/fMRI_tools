@@ -4,3 +4,4 @@ raw_data_path: /data_wgs04/ag-sensomotorik/PPPD/data/all_subjects1/
 output_path: /data_wgs04/ag-sensomotorik/PPPD/analysis/YOUR_OUTPUT_FOLDER
 mask_path: /data_wgs04/ag-sensomotorik/PPPD/masks/
 aal_path: /data_wgs04/ag-sensomotorik/Python_analysis/nilearn_data/aal_3v2/
+suit_path: /data_wgs04/ag-sensomotorik/Python_analysis/cerebellar_atlases/Diedrichsen_2009/

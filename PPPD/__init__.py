@@ -36,6 +36,7 @@ raw_data_path = config["raw_data_path"]
 output_path = config["output_path"]
 mask_path = config["mask_path"]
 aal_path = config["aal_path"]
+suit_path = config["suit_path"]
 
 
 # Gets the path for analysis folder based on the selected feature
@@ -441,3 +442,11 @@ def _get_signed_posthoc_map(feature, group_comparison, part=None, seed=None,):
     os.makedirs(map_dir, exist_ok=True)
 
     return os.path.join(map_dir, filename)
+
+
+# Get SUIT atlas image and lut image
+def _get_suit_atlas():
+    lut_file = os.path.join(suit_path, "atl-Anatom.lut")
+    atlas_img = nib.load(os.path.join(suit_path, "atl-Anatom_space-MNI_dseg.nii"))
+
+    return lut_file, atlas_img
