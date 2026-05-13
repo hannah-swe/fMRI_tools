@@ -24,10 +24,8 @@ seed = "IPLPFL" # List of supported seeds:
                                     # "VermisUvulaL", "VermisVII"
 group_comparison = "pat>HC" # supported comparisons: "pat>HC", "HC>pat"
 pre_post_diff = True
-# mask settings
-# mask_strategy = "subject_based" # supported strategies: "subject_based", "predefined"
-# predefined_mask = "vvn" # supported masks: "dmn", "vvn"
-# threshold_mask = 0.8 # only used if mask_strategy == "subject_based"
+direction = "negative" # possible directions for pre-post differences:
+                        # "positive" (= clusters, where pat>HC), "negative" (= cluster, where HC>pat)
 
 
 # --- all directories
@@ -37,6 +35,10 @@ data_dir = _get_output_path(part, feature, seed)
 # get output path to save results
 output_dir = os.path.join(data_dir, "cerebellum_labeling")
 os.makedirs(output_dir, exist_ok=True)
+
+
+# --- Get path to lut file and load atlas image
+lut_file, atlas_img = _get_suit_atlas()
 
 
 # --- Define the file suffix
@@ -55,25 +57,58 @@ else:
 file_suffix = f"{file_suffix}_{part_label}"
 
 
-# --- Load significant cluster mask from previous analysis
+# --- Load significant cluster map and matching permutation table
+part_label = "all" if part is None else f"{part}"
+if feature == "seed_based":
+    table_file_suffix = f"{feature}_{seed}_{group_comparison}"
+else:
+    table_file_suffix = f"{feature}_{group_comparison}"
+
+table_file_suffix = f"{table_file_suffix}"
+
 if pre_post_diff is True:
-    sig_cluster_dir = os.path.join(data_dir, "pre_post_diff", "sig_cluster_masks", "signed")
-    try:
-        stat_img = nib.load(os.path.join(sig_cluster_dir, f"{feature}_{seed}_{group_comparison}_all_signed_logp_clustermass_fwer05.nii.gz"))
-    except FileNotFoundError:
-        stat_img = None
-        raise FileNotFoundError()
+    if direction not in ["positive", "negative"]:
+        raise ValueError("For pre_post_diff=True, direction must be 'positive' or 'negative'.")
+    sig_cluster_dir = os.path.join(data_dir, "pre_post_diff", "sig_cluster_masks", f"{direction}")
+    cluster_map_path = os.path.join(sig_cluster_dir, f"{table_file_suffix}_all_{direction}_cluster_id_map.nii.gz")
+    cluster_table_path = os.path.join(data_dir, "pre_post_diff", "cluster_tables",
+                                      f"{table_file_suffix}_all_cluster_table_perm_mass.csv")
+
 else:
     sig_cluster_dir = os.path.join(data_dir, "sig_cluster_masks")
-    try:
-        stat_img = nib.load(os.path.join(sig_cluster_dir, f"{feature}_{seed}_{group_comparison}_submask-0.8_logp_clustermass_fwer05.nii.gz"))
-    except FileNotFoundError:
-        stat_img = None
-        raise FileNotFoundError()
+    cluster_map_path = os.path.join(sig_cluster_dir, f"{table_file_suffix}_submask-0.8_logp_clustermass_fwer05.nii.gz")
+    cluster_table_path = os.path.join(data_dir, "cluster_tables", f"{table_file_suffix}_submask-0.8_cluster_table_perm_mass.csv")
+
+# load cluster map
+if not os.path.exists(cluster_map_path):
+    raise FileNotFoundError(f"Cluster map not found: {cluster_map_path}")
+stat_img = nib.load(cluster_map_path)
+print("Loaded cluster map:")
+print(cluster_map_path)
+
+# load permutation table
+if not os.path.exists(cluster_table_path):
+    raise FileNotFoundError(f"Cluster table not found: {cluster_table_path}")
+cluster_table_perm_mass = pd.read_csv(cluster_table_path)
+print("Loaded permutation cluster table:")
+print(cluster_table_path)
 
 
-# --- Get path to lut file and load atlas image
-lut_file, atlas_img = _get_suit_atlas()
+# --- Select relevant clusters from table
+if pre_post_diff is True:
+    if direction == "negative":
+        relevant_clusters = cluster_table_perm_mass[
+            cluster_table_perm_mass["Stat"] < 0
+        ].copy()
+    elif direction == "positive":
+        relevant_clusters = cluster_table_perm_mass[
+            cluster_table_perm_mass["Stat"] > 0
+        ].copy()
+else:
+    relevant_clusters = cluster_table_perm_mass.copy()
+
+print("Relevant clusters from table:", len(relevant_clusters))
+print("Cluster IDs from table:", sorted(relevant_clusters["Cluster"].unique()))
 
 
 # --- Resample stat/cluster map to atlas grid
@@ -84,21 +119,24 @@ stat_data = stat_resampled.get_fdata()
 atlas_data = atlas_img.get_fdata().astype(int)
 
 
-# --- Threshold significant clusters
+# --- Get cluster labels
 neglog_alpha_05 = -np.log10(0.05)
+
 if pre_post_diff:
-    # signed map: positive and negative clusters
-    sig_mask = np.abs(stat_data) > neglog_alpha_05
+    # stat_img is already a cluster-ID map
+    cluster_data = np.rint(stat_data).astype(int)
+
+    cluster_ids = sorted(np.unique(cluster_data))
+    cluster_ids = [c for c in cluster_ids if c != 0]
 else:
-    # one-sided positive map
+    # stat_img is still a continuous logp map -> temporary old behavior
     sig_mask = stat_data > neglog_alpha_05
+    cluster_data, n_clusters = ndimage.label(sig_mask)
 
+    cluster_ids = list(range(1, n_clusters + 1))
 
-# --- Label connected clusters
-# cluster_data: image where each connected cluster gets a unique integer ID
-# n_clusters: total number of significant clusters
-cluster_data, n_clusters = ndimage.label(sig_mask)
-print(f"Found {n_clusters} significant clusters")
+print(f"Found {len(cluster_ids)} significant clusters")
+print("Cluster IDs from map:", cluster_ids)
 
 
 # --- Load atlas lookup table (LUT)
@@ -119,7 +157,7 @@ with open(lut_file, "r") as f:
 rows = []
 
 # --- Loop over all significant clusters
-for cluster_id in range(1, n_clusters + 1):
+for cluster_id in cluster_ids:
     # create boolean mask for current cluster
     cluster_mask = cluster_data == cluster_id
     # compute voxel volume (mm³) from image header (here: 1x1x1 mm after resampling to SUIT atlas grid)
@@ -132,8 +170,23 @@ for cluster_id in range(1, n_clusters + 1):
     # determine atlas regions overlapping with current cluster
     atlas_labels, counts = np.unique(atlas_data[cluster_mask], return_counts=True)
 
-    peak_logp = np.max(np.abs(stat_data[cluster_mask]))
-    cluster_p = 10 ** (-peak_logp)
+    # get stat + p-value from original permutation table
+    if pre_post_diff:
+        table_row = relevant_clusters.loc[
+            relevant_clusters["Cluster"] == cluster_id
+        ]
+    else:
+        # temporary fallback because cluster map is still relabeled via ndimage
+        table_row = relevant_clusters.iloc[[cluster_id - 1]]
+    if len(table_row) != 1:
+        raise ValueError(
+            f"Expected exactly one table row for Cluster={cluster_id}, "
+            f"found {len(table_row)}."
+        )
+    table_row = table_row.iloc[0]
+
+    cluster_stat = table_row["Stat"]
+    cluster_p = table_row["p-value"]
 
     # loop over all overlapping atlas regions
     for label, count in zip(atlas_labels, counts):
@@ -147,7 +200,7 @@ for cluster_id in range(1, n_clusters + 1):
             "Size (voxels)": cluster_size_vox,
             "Overlap voxels": int(count),
             "Overlap %": 100 * count / cluster_size_vox,
-            "Cluster Stat": np.max(stat_data[cluster_mask]),
+            "Cluster Stat": cluster_stat,
             "Cluster p-value": cluster_p,
         })
 
@@ -170,17 +223,34 @@ overlap_df.to_csv(overlap_table_path, index=False)
 surf_plot_dir = os.path.join(output_dir, "surf_plots")
 os.makedirs(surf_plot_dir, exist_ok=True)
 
-# Version 1: Plot binary significant cluster mask
-# create binary mask
-binary_img = math_img(f"(img > {neglog_alpha_05}).astype(int)", img=stat_resampled)
-binary_surf_data = flatmap.vol_to_surf(binary_img, space="MNI")
-# re-binarize after surface projection
-binary_surf_data = (binary_surf_data > 0).astype(int)
+# Version 1: Plot labeled significant clusters
+cluster_surf_data = np.zeros_like(
+    flatmap.vol_to_surf(
+        nib.Nifti1Image((cluster_data != 0).astype(np.uint8),
+                        affine=stat_resampled.affine,
+                        header=stat_resampled.header),
+        space="MNI"
+    ),
+    dtype=int
+)
+
+for cluster_id in cluster_ids:
+    single_cluster_vol = (cluster_data == cluster_id).astype(np.uint8)
+    single_cluster_img = nib.Nifti1Image(
+        single_cluster_vol,
+        affine=stat_resampled.affine,
+        header=stat_resampled.header
+    )
+    single_cluster_img.set_data_dtype(np.uint8)
+    single_cluster_surf = flatmap.vol_to_surf(single_cluster_img, space="MNI")
+    # threshold projected binary cluster
+    single_cluster_surf_mask = single_cluster_surf > 0
+    cluster_surf_data[single_cluster_surf_mask] = cluster_id
 
 flatmap.plot(
-    binary_surf_data,
+    cluster_surf_data,
     overlay_type="label",
-    cmap="Wistia_r",
+    cmap="tab20",
     colorbar=False,
     render="matplotlib"
 )
