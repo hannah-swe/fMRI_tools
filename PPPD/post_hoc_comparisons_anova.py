@@ -18,7 +18,7 @@ task = "rest"
 runs = ["run-01", "run-02"] # pre, post
 part = None # supported: None, 1, 2 (None: all subjects; part 1: subjects < 100; part 2: subjects >= 100)
 feature = "seed_based" # supported features: "falff", "seed_based", "alff"
-seed = "CSvR" # List of supported seeds:
+seed = "OperculumOP4R" # List of supported seeds:
                                     # "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
                                     # "InsulaOP3RAnat", "InsulaOP3Sphere",
                                     # "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",
@@ -27,6 +27,7 @@ seed = "CSvR" # List of supported seeds:
                                     # "CSv", "CSvR",
                                     # "V1L", "V1R", "V2L", "V2R", "V5L", "V5R", "V6L", "V6R",
                                     # "VermisUvulaL", "VermisVII"
+                        # for feature = "falff" or "alff" do seed = None
 group_comparison = "pat>HC" # supported comparisons: "pat>HC", "HC>pat"
 # define which cluster mask from mixed anova to use
 direction = "negative" # possible directions: "positive" (= clusters, where pat>HC), "negative" (= cluster, where HC>pat)
@@ -141,11 +142,11 @@ cluster_table_perm_mass = pd.read_csv(cluster_table_path)
 # Keep only clusters matching selected direction
 if direction == "negative":
     relevant_clusters = cluster_table_perm_mass[
-        cluster_table_perm_mass["Peak Stat"] < 0
+        cluster_table_perm_mass["Stat"] < 0
     ].copy()
 elif direction == "positive":
     relevant_clusters = cluster_table_perm_mass[
-        cluster_table_perm_mass["Peak Stat"] > 0
+        cluster_table_perm_mass["Stat"] > 0
     ].copy()
 else:
     raise ValueError("direction must be 'positive' or 'negative'")
@@ -157,23 +158,24 @@ print(cluster_table_path)
 print("Relevant clusters from table:", len(relevant_clusters))
 
 
-# --- Split significant mask into single clusters:
-mask_data = cluster_mask.get_fdata() != 0
+# --- Split labeled cluster map into single clusters:
+labeled_data = cluster_mask.get_fdata().astype(int)
 
-# Use same connectivity consistently
-structure = ndimage.generate_binary_structure(3, 3)
-labeled_data, n_clusters = ndimage.label(mask_data, structure=structure)
+cluster_ids = sorted(np.unique(labeled_data))
+cluster_ids = [c for c in cluster_ids if c != 0]
 
-print("Number of clusters in mask:", n_clusters)
-if n_clusters == 0:
-    raise ValueError("No clusters found in mask.")
-if n_clusters != len(relevant_clusters):
+print("Number of clusters in labeled map:", len(cluster_ids))
+if len(cluster_ids) == 0:
+    raise ValueError("No clusters found in labeled cluster map.")
+if len(cluster_ids) != len(relevant_clusters):
     print(
-        "WARNING: Number of clusters in mask does not match number of clusters "
+        "WARNING: Number of clusters in labeled map does not match number of clusters "
         "in permutation table for this direction."
     )
-    print(f"Mask clusters: {n_clusters}")
+    print(f"Map clusters: {len(cluster_ids)}")
     print(f"Table clusters: {len(relevant_clusters)}")
+    print("Map cluster IDs:", cluster_ids)
+    print("Table cluster IDs:", sorted(relevant_clusters["Cluster"].unique()))
 
 single_cluster_dir = os.path.join(output_dir, "post-hoc", "single_cluster_masks")
 os.makedirs(single_cluster_dir, exist_ok=True)
@@ -181,37 +183,48 @@ os.makedirs(single_cluster_dir, exist_ok=True)
 cluster_info = []
 cluster_mask_paths = []
 
-for cluster_id in range(1, n_clusters + 1):
+for cluster_id in cluster_ids:
     single_cluster_data = (labeled_data == cluster_id).astype(np.uint8)
     n_voxels = int(single_cluster_data.sum())
 
-    # Get p-value and peak stat from original permutation cluster table
-    if cluster_id - 1 < len(relevant_clusters):
-        table_row = relevant_clusters.iloc[cluster_id - 1]
-        cluster_peak_stat = table_row["Peak Stat"]
-        cluster_p = table_row["p-value"]
-        # Optional: use table cluster size if available
-        table_cluster_id = table_row["Cluster"]
-        print(
-            f"Cluster {cluster_id}: "
-            f"table Cluster ID = {table_cluster_id}, "
-            f"Peak Stat = {cluster_peak_stat:.3f}, "
-            f"p = {cluster_p:.5f}"
+    # Get matching row by true cluster ID, not by row order
+    matching_rows = relevant_clusters.loc[relevant_clusters["Cluster"] == cluster_id]
+
+    if len(matching_rows) != 1:
+        raise ValueError(
+            f"Expected exactly one table row for cluster_id={cluster_id}, "
+            f"found {len(matching_rows)}."
         )
-    else:
-        cluster_peak_stat = np.nan
-        cluster_p = np.nan
-        table_cluster_id = np.nan
-        print(f"Cluster {cluster_id}: no matching row found in permutation table.")
+
+    table_row = matching_rows.iloc[0]
+
+    cluster_peak_stat = table_row["Stat"]
+    cluster_p = table_row["p-value"]
+    table_cluster_id = table_row["Cluster"]
+
+    print(
+        f"Cluster {cluster_id}: "
+        f"table Cluster ID = {table_cluster_id}, "
+        f"Peak Stat = {cluster_peak_stat:.3f}, "
+        f"p = {cluster_p:.5f}"
+    )
 
     # Get single cluster image
-    single_cluster_img = nib.Nifti1Image(single_cluster_data, affine=cluster_mask.affine, header=cluster_mask.header)
+    single_cluster_img = nib.Nifti1Image(
+        single_cluster_data,
+        affine=cluster_mask.affine,
+        header=cluster_mask.header
+    )
     single_cluster_img.set_data_dtype(np.uint8)
 
     # Get AAL label
     try:
-        cluster_table = _get_cluster_table_with_aal_labels( stat_img=single_cluster_img, stat_threshold=0.5,
-                                                            cluster_threshold=0, two_sided=False)
+        cluster_table = _get_cluster_table_with_aal_labels(
+            stat_img=single_cluster_img,
+            stat_threshold=0.5,
+            cluster_threshold=0,
+            two_sided=False
+        )
         aal_label = cluster_table.iloc[0]["aal_label"]
         aal_label_clean = (
             aal_label
@@ -224,7 +237,7 @@ for cluster_id in range(1, n_clusters + 1):
         aal_label_clean = f"cluster-{cluster_id:02d}"
 
     # Save cluster mask
-    cluster_filename = f"{file_suffix}_{aal_label_clean}.nii.gz"
+    cluster_filename = f"{file_suffix}_cluster-{cluster_id:02d}_{aal_label_clean}.nii.gz"
     cluster_path = os.path.join(single_cluster_dir, cluster_filename)
     single_cluster_img.to_filename(cluster_path)
 
@@ -249,7 +262,10 @@ cluster_info_df = pd.DataFrame(cluster_info)
 
 # --- Extract connectivity per subject, run, and cluster:
 rows = []
-for cluster_id, cluster_path in enumerate(cluster_mask_paths, start=1):
+for _, cluster_row in cluster_info_df.iterrows():
+    cluster_id = cluster_row["cluster_id"]
+    cluster_path = cluster_row["path"]
+
     single_cluster_mask = nib.load(cluster_path)
     for _, row in included_df.iterrows():
         subject_id = row["subject_id"]
@@ -276,6 +292,7 @@ for cluster_id, cluster_path in enumerate(cluster_mask_paths, start=1):
             "run": "post",
             "value": post_mean
         })
+
 plot_df = pd.DataFrame(rows)
 
 
@@ -289,6 +306,16 @@ plot_dir = os.path.join(output_dir, "post-hoc", "plots")
 os.makedirs(plot_dir, exist_ok=True)
 sns.set_theme(style="ticks")
 sns.set_context("talk")
+
+for cluster_id in sorted(plot_df["cluster"].unique()):
+    info = cluster_info_df[cluster_info_df["cluster_id"] == cluster_id]
+    print("\ncluster_id:", cluster_id)
+    print(info[["cluster_id", "aal_label", "p_value"]])
+    if len(info) != 1:
+        raise ValueError(f"Problem bei cluster_id={cluster_id}: {len(info)} Treffer")
+    cluster_label = info["aal_label"].iloc[0]
+    cluster_p = info["p_value"].iloc[0]
+    print("USED:", cluster_id, cluster_label, cluster_p)
 
 for cluster_id in sorted(plot_df["cluster"].unique()):
     this_plot = plot_df[plot_df["cluster"] == cluster_id].copy()
@@ -319,7 +346,8 @@ for cluster_id in sorted(plot_df["cluster"].unique()):
     plt.ylabel(f"Mean value in {cluster_label}")
     plt.tight_layout()
     sns.despine()
-    plt.savefig(os.path.join(plot_dir, f"{file_suffix}_{cluster_label}_lineplot_pre_post_by_group.png"), dpi=300)
+    plt.savefig(os.path.join(
+        plot_dir, f"{file_suffix}_cluster-{cluster_id:02d}_{cluster_label}_lineplot_pre_post_by_group.png"), dpi=300)
     plt.show()
 
 
@@ -346,5 +374,6 @@ for cluster_id in sorted(plot_df["cluster"].unique()):
     plt.ylabel(f"Mean value in {cluster_label}")
     sns.despine()
     plt.tight_layout()
-    plt.savefig(os.path.join(plot_dir, f"{file_suffix}_{cluster_label}_boxplot_difference_by_group.png"), dpi=300)
+    plt.savefig(os.path.join(
+        plot_dir, f"{file_suffix}_cluster-{cluster_id:02d}_{cluster_label}_boxplot_difference_by_group.png"), dpi=300)
     plt.show()

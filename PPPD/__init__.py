@@ -270,20 +270,26 @@ def _coord_to_label_and_distance(x, y, z, atlas_img, atlas_data, value_to_label)
 
 # Extract cluster table from a stat image and annotate peak coordinates with AAL atlas labels
 def _get_cluster_table_with_aal_labels(stat_img, stat_threshold, cluster_threshold=0, two_sided=False,
-                                       min_distance=8.0, aal_dir=aal_path):
-    clusters_table = get_clusters_table(
+                                       min_distance=8.0, aal_dir=aal_path, return_label_maps=False):
+    result  = get_clusters_table(
         stat_img,
         stat_threshold=stat_threshold,
         cluster_threshold=cluster_threshold,
         two_sided=two_sided,
         min_distance=min_distance,
-        return_label_maps=False,
+        return_label_maps=True,
     )
+    clusters_table = result[0]
+    label_maps = result[1:]
+
     if clusters_table.empty:
         clusters_table["aal_label"] = pd.Series(dtype="object")
+        if return_label_maps:
+            return clusters_table, label_maps
         return clusters_table
 
     atlas_img, atlas_data, value_to_label = _load_local_aal_atlas(aal_dir=aal_dir)
+
     coord_cols = None
     for candidate in [("X", "Y", "Z"), ("x", "y", "z")]:
         if all(col in clusters_table.columns for col in candidate):
@@ -295,12 +301,23 @@ def _get_cluster_table_with_aal_labels(stat_img, stat_threshold, cluster_thresho
         )
 
     x_col, y_col, z_col = coord_cols
-    clusters_table[["aal_label", "distance_mm"]] = clusters_table.apply(lambda row: pd.Series(
-            _coord_to_label_and_distance(row[x_col], row[y_col], row[z_col],
-                                         atlas_img, atlas_data, value_to_label)
-        ),
-        axis=1)
 
+    clusters_table[["aal_label", "distance_mm"]] = clusters_table.apply(
+        lambda row: pd.Series(
+            _coord_to_label_and_distance(
+                row[x_col],
+                row[y_col],
+                row[z_col],
+                atlas_img,
+                atlas_data,
+                value_to_label,
+            )
+        ),
+        axis=1,
+    )
+
+    if return_label_maps:
+        return clusters_table, label_maps
     return clusters_table
 
 
@@ -416,9 +433,9 @@ def _get_posthoc_cluster_mask(feature, group_comparison, direction, part=None, s
 
     # build filename and directory
     if feature == "seed_based":
-        filename = f"{feature}_{seed}_{group_comparison}_{part_label}_{direction}_clusters_mask.nii.gz"
+        filename = f"{feature}_{seed}_{group_comparison}_{part_label}_{direction}_cluster_id_map.nii.gz"
     else:
-        filename = f"{feature}_{group_comparison}_{part_label}_{direction}_clusters_mask.nii.gz"
+        filename = f"{feature}_{group_comparison}_{part_label}_{direction}_cluster_id_map.nii.gz"
     mask_dir = os.path.join(_get_output_path(part, feature, seed), "pre_post_diff", "sig_cluster_masks", f"{direction}")
     os.makedirs(mask_dir, exist_ok=True)
 

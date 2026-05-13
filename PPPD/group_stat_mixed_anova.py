@@ -22,7 +22,7 @@ task = "rest"
 runs = ["run-01", "run-02"] # pre, post
 part = None # supported: None, 1, 2 (None: all subjects; part 1: subjects < 100; part 2: subjects >= 100)
 feature = "seed_based" # supported features: "falff", "seed_based", "alff"
-seed = "IPLPFR" # List of supported seeds:
+seed = "CSvR" # List of supported seeds:
                                     # "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
                                     # "InsulaOP3RAnat", "InsulaOP3Sphere",
                                     # "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",
@@ -31,6 +31,7 @@ seed = "IPLPFR" # List of supported seeds:
                                     # "CSv", "CSvR",
                                     # "V1L", "V1R", "V2L", "V2R", "V5L", "V5R", "V6L", "V6R",
                                     # "VermisUvulaL", "VermisVII"
+                        # for feature = "falff" or "alff" do seed = None
 group_comparison = "pat>HC" # supported comparisons: "pat>HC", "HC>pat"
 # mask settings
 mask_strategy = "subject_based" # supported strategies: "subject_based", "predefined"
@@ -236,6 +237,7 @@ if np.any(thr1_data != 0):
     display.savefig(os.path.join(output_dir, "01_uncorrected", f"{file_suffix}_uncorrected_p001_cluster10.png"))
 else:
     print("No suprathreshold clusters; skipping plots.")
+
 # get cluster table with anatomical labels
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
@@ -298,31 +300,17 @@ with warnings.catch_warnings():
 logp_mass_thr_float = math_img("img.astype(float)", img=signed_logp_mass_thr)
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
-    cluster_table_perm_mass = _get_cluster_table_with_aal_labels(
+    cluster_table_perm_mass, label_maps = _get_cluster_table_with_aal_labels(
         stat_img=logp_mass_thr_float,
         stat_threshold=neglog_alpha_05,
         cluster_threshold=0,
         two_sided=True,
+        return_label_maps=True
     )
-
-# get data
-data = signed_logp_mass_thr.get_fdata()
-# create binary threshold mask, matching two_sided=True
-threshold_mask = np.abs(data) > neglog_alpha_05
-# label connected clusters
-labeled_data, n_clusters = ndimage.label(threshold_mask)
-
-# compute p-value for each cluster
-cluster_p_values = []
-for cluster_id in cluster_table_perm_mass["Cluster ID"]:
-    cluster_mask = labeled_data == cluster_id
-    if not np.any(cluster_mask):
-        cluster_p_values.append(np.nan)
-        continue
-    cluster_logp = np.max(np.abs(data[cluster_mask]))
-    cluster_p = 10 ** (-cluster_logp)
-    cluster_p_values.append(cluster_p)
-
+label_maps = label_maps[0]
+print(f"Found {len(label_maps)} label map(s)")
+# convert peak stat value (-log10(p)) back to real p-value (10^(-p))
+cluster_p_values = 10 ** (-abs(cluster_table_perm_mass["Peak Stat"]))
 # insert p-value column after Peak Stat
 peak_stat_idx = cluster_table_perm_mass.columns.get_loc("Peak Stat") + 1
 cluster_table_perm_mass.insert(peak_stat_idx, "p-value", cluster_p_values)
@@ -343,6 +331,19 @@ cluster_table_perm_mass.to_csv(cluster_table_path, index=False)
 posthoc_mask_dir = os.path.join(output_dir, "sig_cluster_masks")
 os.makedirs(posthoc_mask_dir, exist_ok=True)
 
+for i, lm in enumerate(label_maps):
+    data = lm.get_fdata()
+    # determine direction from signed map
+    signed_vals = signed_logp_mass_thr.get_fdata()[data > 0]
+    if np.nanmean(signed_vals) > 0:
+        direction = "positive"
+    else:
+        direction = "negative"
+    lm_path = os.path.join(posthoc_mask_dir, direction, f"{file_suffix}_{direction}_cluster_id_map.nii.gz")
+    lm.to_filename(lm_path)
+    print(f"Saved {direction} cluster map.")
+
+# OLD MASKS
 # full signed corrected map
 signed_logp_mass_path = os.path.join(posthoc_mask_dir, "signed", f"{file_suffix}_signed_logp_clustermass_fwer05.nii.gz")
 signed_logp_mass_thr.to_filename(signed_logp_mass_path)

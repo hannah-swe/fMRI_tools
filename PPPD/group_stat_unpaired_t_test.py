@@ -30,6 +30,7 @@ seed = "OperculumOP4L" # List of supported seeds:
                                     # "CSv", "CSvR",
                                     # "V1L", "V1R", "V2L", "V2R", "V5L", "V5R", "V6L", "V6R",
                                     # "VermisUvulaL", "VermisVII"
+                        # for feature = "falff" or "alff" do seed = None
 group_comparison = "pat>HC" # supported comparisons: "pat>HC", "HC>pat"
 # mask settings
 mask_strategy = "subject_based" # supported strategies: "subject_based", "predefined"
