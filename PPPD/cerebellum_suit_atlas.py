@@ -33,7 +33,10 @@ direction = "negative" # possible directions for pre-post differences:
 data_dir = _get_output_path(part, feature, seed)
 
 # get output path to save results
-output_dir = os.path.join(data_dir, "cerebellum_labeling")
+if pre_post_diff is True:
+    output_dir = os.path.join(data_dir, "pre_post_diff", "cerebellum_labeling")
+else:
+    output_dir = os.path.join(data_dir, "cerebellum_labeling")
 os.makedirs(output_dir, exist_ok=True)
 
 
@@ -224,11 +227,23 @@ surf_plot_dir = os.path.join(output_dir, "surf_plots")
 os.makedirs(surf_plot_dir, exist_ok=True)
 
 # Version 1: Plot labeled significant clusters
+
+# use tab20 color IDs starting at 2:
+# first cerebellar cluster -> dark orange
+# second cerebellar cluster -> light orange
+# etc.
+plot_id_map = {
+    cluster_id: plot_id
+    for plot_id, cluster_id in enumerate(cluster_ids, start=2)
+}
+
 cluster_surf_data = np.zeros_like(
     flatmap.vol_to_surf(
-        nib.Nifti1Image((cluster_data != 0).astype(np.uint8),
-                        affine=stat_resampled.affine,
-                        header=stat_resampled.header),
+        nib.Nifti1Image(
+            (cluster_data != 0).astype(np.uint8),
+            affine=stat_resampled.affine,
+            header=stat_resampled.header
+        ),
         space="MNI"
     ),
     dtype=int
@@ -236,16 +251,19 @@ cluster_surf_data = np.zeros_like(
 
 for cluster_id in cluster_ids:
     single_cluster_vol = (cluster_data == cluster_id).astype(np.uint8)
+
     single_cluster_img = nib.Nifti1Image(
         single_cluster_vol,
         affine=stat_resampled.affine,
         header=stat_resampled.header
     )
     single_cluster_img.set_data_dtype(np.uint8)
+
     single_cluster_surf = flatmap.vol_to_surf(single_cluster_img, space="MNI")
-    # threshold projected binary cluster
     single_cluster_surf_mask = single_cluster_surf > 0
-    cluster_surf_data[single_cluster_surf_mask] = cluster_id
+
+    # use plot ID, not original cluster ID
+    cluster_surf_data[single_cluster_surf_mask] = plot_id_map[cluster_id]
 
 flatmap.plot(
     cluster_surf_data,
@@ -254,8 +272,14 @@ flatmap.plot(
     colorbar=False,
     render="matplotlib"
 )
+
 plt.suptitle(f"{base_title}\nsignificant clusters", fontsize=12, y=0.88)
-binary_plot_path = os.path.join(surf_plot_dir, f"{file_suffix}_binary_suit_flatmap.png")
+
+binary_plot_path = os.path.join(
+    surf_plot_dir,
+    f"{file_suffix}_binary_suit_flatmap.png"
+)
+
 plt.savefig(binary_plot_path, dpi=300, bbox_inches="tight")
 plt.show()
 
