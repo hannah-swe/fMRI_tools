@@ -4,12 +4,12 @@ import matplotlib.pyplot as plt
 import os
 import nibabel as nib
 from PPPD import (_get_data_path, _get_derivatives_path, _get_participants_tsv, _get_full_filename, _get_output_path,
-                  _get_posthoc_cluster_mask, _get_signed_posthoc_map, _get_cluster_table_with_aal_labels)
+                  _get_selected_subject_list, _get_posthoc_cluster_mask, _get_signed_posthoc_map,
+                  _get_cluster_table_with_aal_labels)
 from PPPD.subjects import subs, subjects_to_exclude
 from nilearn.masking import apply_mask
 import numpy as np
 import pandas as pd
-from scipy import ndimage
 import seaborn as sns
 
 
@@ -69,16 +69,7 @@ file_suffix = f"{file_suffix}_{part_label}_{direction}"
 
 
 # --- Choose subjects depending on experimental part and exclude subjects who participated in both parts:
-if part is None:
-    selected_subs = [s for s in subs if s not in subjects_to_exclude]
-elif part == 1:
-    selected_subs = [s for s in subs if s < 100]
-elif part == 2:
-    selected_subs = [s for s in subs if s >= 100]
-else:
-    raise ValueError("part must be None, 1, or 2")
-print(f"Selected part: {part if part is not None else 'all'}")
-print(f"Selected subjects before loading: {len(selected_subs)}")
+selected_subs = _get_selected_subject_list(part, subs, subjects_to_exclude)
 
 
 # --- Load data:

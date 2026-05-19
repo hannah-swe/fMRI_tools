@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import os
 import nibabel as nib
 from PPPD import (_get_data_path, _get_derivatives_path, _get_participants_tsv, _get_full_filename, _get_mask_filename,
-                  _get_output_path, _define_group_comparison, _get_mask_file, _get_cluster_table_with_aal_labels)
+                  _get_output_path, _define_group_comparison, _get_selected_subject_list, _get_mask_file)
 from PPPD.subjects import subs, subjects_to_exclude
 from nilearn.glm.second_level import SecondLevelModel, non_parametric_inference
 from nilearn.image import threshold_img, math_img
@@ -50,21 +50,12 @@ group_mapping = _define_group_comparison(group_comparison)
 
 
 # --- Choose subjects depending on experimental part and exclude subjects who participated in both parts:
-if part is None:
-    selected_subs = [s for s in subs if s not in subjects_to_exclude]
-elif part == 1:
-    selected_subs = [s for s in subs if s < 100]
-elif part == 2:
-    selected_subs = [s for s in subs if s >= 100]
-else:
-    raise ValueError("part must be None, 1, or 2")
-print(f"Selected part: {part if part is not None else 'all'}")
-print(f"Selected subjects before loading: {len(selected_subs)}")
+selected_subs = _get_selected_subject_list(part, subs, subjects_to_exclude)
 
 
 # --- Loop over seeds
 for seed in seeds:
-    print(f"Running seed: {seed}")
+    print(f"=== Running seed: {seed} ===")
 
     # --- Output path where diff images already exist
     output_dir = _get_output_path(part, feature, seed)

@@ -207,6 +207,22 @@ def _define_group_comparison(group_comparison):
     return group_mapping
 
 
+#
+def _get_selected_subject_list(part, subs, subjects_to_exclude):
+    if part is None:
+        selected_subs = [s for s in subs if s not in subjects_to_exclude]
+    elif part == 1:
+        selected_subs = [s for s in subs if s < 100]
+    elif part == 2:
+        selected_subs = [s for s in subs if s >= 100]
+    else:
+        raise ValueError("part must be None, 1, or 2")
+    print(f"Selected part: {part if part is not None else 'all'}")
+    print(f"Selected subjects before loading: {len(selected_subs)}")
+
+    return selected_subs
+
+
 # Load manually downloaded AAL atlas (NIfTI + XML) from local directory
 def _load_local_aal_atlas(aal_dir=aal_path):
     """
