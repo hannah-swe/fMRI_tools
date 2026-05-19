@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import os
 import nibabel as nib
 from PPPD import (_get_data_path, _get_derivatives_path, _get_participants_tsv, _get_full_filename, _get_mask_filename,
-                  _get_output_path, _define_group_comparison, _get_cluster_table_with_aal_labels)
+                  _get_output_path, _define_group_comparison, _get_mask_file, _get_cluster_table_with_aal_labels)
 from PPPD.subjects import subs, subjects_to_exclude
 from nilearn.glm.second_level import SecondLevelModel, non_parametric_inference
 from nilearn.image import threshold_img, math_img

@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import os
 import nibabel as nib
 from PPPD import (_get_data_path, _get_derivatives_path, _get_participants_tsv, _get_full_filename, _get_mask_filename,
-                  _get_output_path, _get_mask_file, _get_cluster_table_with_aal_labels)
+                  _get_output_path, _define_group_comparison, _get_mask_file, _get_cluster_table_with_aal_labels)
 from PPPD.subjects import subs, subjects_to_exclude
 from nilearn.glm.second_level import SecondLevelModel, non_parametric_inference
 from nilearn.image import threshold_img, math_img
@@ -75,16 +75,7 @@ file_suffix = f"{file_suffix}_{part_label}"
 
 
 # --- Group mapping for contrast via predefined comparison strategy:
-if group_comparison == "pat>HC":
-    group_mapping = {
-        "patient": 1,
-        "control": -1}
-elif group_comparison == "HC>pat":
-    group_mapping = {
-        "control": 1,
-        "patient": -1}
-else:
-    raise ValueError(f"Unknown group comparison: {group_comparison}")
+group_mapping = _define_group_comparison(group_comparison)
 
 
 # --- Choose subjects depending on experimental part and exclude subjects who participated in both parts:
