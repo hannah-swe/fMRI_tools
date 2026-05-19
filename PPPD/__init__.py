@@ -191,6 +191,22 @@ def _get_mask_file(predefined_mask):
     return mask_file
 
 
+# Define croup comparison
+def _define_group_comparison(group_comparison):
+    if group_comparison == "pat>HC":
+        group_mapping = {
+            "patient": 1,
+            "control": -1}
+    elif group_comparison == "HC>pat":
+        group_mapping = {
+            "control": 1,
+            "patient": -1}
+    else:
+        raise ValueError(f"Unknown group comparison: {group_comparison}")
+
+    return group_mapping
+
+
 # Load manually downloaded AAL atlas (NIfTI + XML) from local directory
 def _load_local_aal_atlas(aal_dir=aal_path):
     """

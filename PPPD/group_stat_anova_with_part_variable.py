@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import os
 import nibabel as nib
 from PPPD import (_get_data_path, _get_derivatives_path, _get_participants_tsv, _get_full_filename, _get_mask_filename,
-                  _get_output_path, _get_mask_file, _get_cluster_table_with_aal_labels)
+                  _get_output_path, _define_group_comparison, _get_cluster_table_with_aal_labels)
 from PPPD.subjects import subs, subjects_to_exclude
 from nilearn.glm.second_level import SecondLevelModel, non_parametric_inference
 from nilearn.image import threshold_img, math_img
@@ -20,7 +20,7 @@ task = "rest"
 runs = ["run-01", "run-02"] # pre, post
 part = None # supported: None, 1, 2 (None: all subjects; part 1: subjects < 100; part 2: subjects >= 100)
 feature = "seed_based" # supported features: "falff", "seed_based", "alff"
-seeds = ["CSv", "CSvR"] # List of supported seeds:
+seeds = ["VermisUvulaL", "VermisVII"] # List of supported seeds:
                                     # "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
                                     # "InsulaOP3RAnat", "InsulaOP3Sphere",
                                     # "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",
@@ -46,16 +46,7 @@ participants_df["part"] = participants_df["participant_id"].apply(lambda x: 1 if
 
 
 # --- Group mapping for contrast via predefined comparison strategy:
-if group_comparison == "pat>HC":
-    group_mapping = {
-        "patient": 1,
-        "control": -1}
-elif group_comparison == "HC>pat":
-    group_mapping = {
-        "control": 1,
-        "patient": -1}
-else:
-    raise ValueError(f"Unknown group comparison: {group_comparison}")
+group_mapping = _define_group_comparison(group_comparison)
 
 
 # --- Choose subjects depending on experimental part and exclude subjects who participated in both parts:
@@ -205,7 +196,7 @@ for seed in seeds:
     second_level_model = SecondLevelModel(mask_img=analysis_mask)
     second_level_model = second_level_model.fit(diff_imgs, design_matrix=second_level_design)
     # get interaction group x part
-    interaction_z_map = second_level_model.compute_contrast(second_level_contrast="interaction", output_type="z_score")
+    interaction_z_map = second_level_model.compute_contrast(second_level_contrast="part", output_type="z_score")
 
     # Significance test:
     # Version 1: abs(z) > 3.09 (equivalent to p < 0.001 one-sided test), cluster size > 10 voxels
@@ -217,7 +208,7 @@ for seed in seeds:
         fig = plt.figure(figsize=(9,5))
         display = plot_glass_brain(thresholded_map1, cmap="RdBu_r",
                                    figure=fig, title=None, plot_abs=False, symmetric_cbar=True)
-        display.frame_axes.figure.suptitle(f"difference z map (post - pre) \n interaction: group x part \n {base_title}; z > 3.09; clusters > 10 voxels")
+        display.frame_axes.figure.suptitle(f"difference z map (post - pre) \n main effect: part \n {base_title}; z > 3.09; clusters > 10 voxels")
         # display.savefig(os.path.join(output_dir, "01_uncorrected", f"{file_suffix}_uncorrected_p001_cluster10.png"))
     else:
         print("No suprathreshold clusters; skipping plots.")
@@ -229,7 +220,7 @@ for seed in seeds:
         perm_out = non_parametric_inference(
             second_level_input=diff_imgs,
             design_matrix=second_level_design,
-            second_level_contrast="interaction",
+            second_level_contrast="part",
             mask=analysis_mask,
             model_intercept=False,  # intercept is already in the design matrix
             n_perm=n_perm,
@@ -243,7 +234,7 @@ for seed in seeds:
     # convert corrected -log10(p) maps into thresholded views (corrected p < .05  <=>  -log10(p) > 1.30103)
     neglog_alpha_05 = -np.log10(0.05)
     # use parametric z-map only for the sign/direction
-    sign_z_map = second_level_model.compute_contrast("group", output_type="z_score")
+    sign_z_map = interaction_z_map
     # signed cluster-mass corrected -log10(p) map
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -264,7 +255,7 @@ for seed in seeds:
             display = plot_glass_brain(signed_logp_mass_thr, cmap="RdBu_r", vmax=vmax, threshold=neglog_alpha_05,
                                        plot_abs=False, symmetric_cbar=True, figure=fig, title=None, colorbar=True)
             display.frame_axes.figure.suptitle(
-                f"difference map permutation test cluster-mass FWER \n interaction group x part \n {base_title} | corrected p < .05")
+                f"difference map permutation test cluster-mass FWER \n main effect: part \n {base_title} | corrected p < .05")
             # display.savefig(os.path.join(output_dir, "04_nonparametric", f"{file_suffix}_perm_clustermass_fwer05.png"))
         else:
             print("No clusters survive permutation cluster-mass FWER correction.")
