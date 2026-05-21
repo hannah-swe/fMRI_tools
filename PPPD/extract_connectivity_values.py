@@ -1,0 +1,219 @@
+import matplotlib
+matplotlib.use("TkAgg")
+import matplotlib.pyplot as plt
+import os
+import nibabel as nib
+from PPPD import (_get_data_path, _get_derivatives_path, _get_participants_tsv, _get_full_filename, _get_output_path,
+                  _get_selected_subject_list, _get_posthoc_cluster_mask, _get_signed_posthoc_map,
+                  _get_cluster_table_with_aal_labels)
+from PPPD.subjects import subs, subjects_to_exclude
+from nilearn.masking import apply_mask
+import numpy as np
+import pandas as pd
+
+
+def get_dataframe_for_connectivity_values(
+    seeds,
+    feature,
+    group_comparison,
+    pre_post_diff,
+    selected_subs,
+    participants_df,
+    task="rest",
+    run=None,
+    part=None,
+    direction=None,
+):
+    all_rows = []
+
+    for seed in seeds:
+        print(f"=== Running seed: {seed} ===")
+
+        # --- Get all directories:
+        # path to halfpipe derivatives directory
+        base_dir = _get_data_path(feature, seed)
+
+        # get derivatives path
+        deriv_dir = _get_derivatives_path(feature, seed)
+
+        # get output path
+        output_dir = _get_output_path(part, feature, seed)
+
+        # get sig cluster mask directory and load mask
+        mask_path = _get_posthoc_cluster_mask(
+            feature=feature,
+            group_comparison=group_comparison,
+            pre_post_diff=pre_post_diff,
+            direction=direction,
+            part=part,
+            seed=seed,
+        )
+        cluster_mask = nib.load(mask_path)
+
+        # --- Define the file suffix
+        if feature == "seed_based":
+            base_title = f"{feature} {seed}"
+            file_suffix = f"{feature}_{seed}"
+        else:
+            base_title = f"{feature}"
+            file_suffix = f"{feature}"
+        if part is None:
+            part_label = "all"
+            base_title = f"{base_title}; subjects: {part_label}"
+        else:
+            part_label = f"{part}"
+            base_title = f"{base_title}; subjects part: {part_label}"
+        file_suffix = f"{file_suffix}_{part_label}"
+
+
+        # --- Load original permutation cluster table
+        if feature == "seed_based":
+            table_file_suffix = f"{feature}_{seed}_{group_comparison}"
+        else:
+            table_file_suffix = f"{feature}_{group_comparison}"
+        # part_label = "all" if part is None else f"{part}"
+        # table_file_suffix = f"{table_file_suffix}_{part_label}"
+        cluster_table_path = os.path.join(output_dir, "cluster_tables", f"{table_file_suffix}_submask-0.8_cluster_table_perm_mass.csv")
+        cluster_table_perm_mass = pd.read_csv(cluster_table_path)
+
+        # --- Load data:
+        # initialize lists for derivatives, subject ids and mask images
+        included_subjects = []
+
+        # subject loop to load original stat map for connectivity extraction
+        for s in selected_subs:
+            # get full subject id
+            subject_id = f"sub-{s:03d}"
+
+            # load statistical nifti maps
+            filename = _get_full_filename(subject_id, task, run, feature, seed)
+            img = os.path.join(deriv_dir, subject_id, "func", f"task-{task}", filename)
+            if not os.path.exists(img):
+                print(f"Missing file: {img}")
+                continue
+            try:
+                nib.load(img)
+                included_subjects.append({
+                    "subject_id": subject_id,
+                    "subject_num": s,
+                    "img": img,
+                })
+            except Exception as e:
+                print(f"Error loading {img}: {e}")
+                continue
+
+        print("Loaded images:", len(included_subjects))
+        included_subjects_df = pd.DataFrame(included_subjects)
+        included_subjects_df = included_subjects_df.merge(participants_df[["subject_id", "group"]], on="subject_id", how="left")
+
+
+        # --- Split labeled cluster map into single clusters:
+        labeled_data = cluster_mask.get_fdata().astype(int)
+
+        cluster_ids = sorted(np.unique(labeled_data))
+        cluster_ids = [c for c in cluster_ids if c != 0]
+
+        print("Number of clusters in labeled map:", len(cluster_ids))
+        if len(cluster_ids) == 0:
+            raise ValueError("No clusters found in labeled cluster map.")
+        if len(cluster_ids) != len(cluster_table_perm_mass):
+            print(
+                "WARNING: Number of clusters in labeled map does not match number of clusters "
+                "in permutation table for this direction."
+            )
+            print(f"Map clusters: {len(cluster_ids)}")
+            print(f"Table clusters: {len(cluster_table_perm_mass)}")
+            print("Map cluster IDs:", cluster_ids)
+            print("Table cluster IDs:", sorted(cluster_table_perm_mass["Cluster"].unique()))
+
+        single_cluster_dir = os.path.join(output_dir, "correlations", "single_cluster_masks")
+        os.makedirs(single_cluster_dir, exist_ok=True)
+
+        cluster_info = []
+
+        for cluster_id in cluster_ids:
+            single_cluster_data = (labeled_data == cluster_id).astype(np.uint8)
+            n_voxels = int(single_cluster_data.sum())
+
+            # Get matching row by true cluster ID, not by row order
+            matching_rows = cluster_table_perm_mass.loc[cluster_table_perm_mass["Cluster"] == cluster_id]
+
+            if len(matching_rows) != 1:
+                raise ValueError(
+                    f"Expected exactly one table row for cluster_id={cluster_id}, "
+                    f"found {len(matching_rows)}."
+                )
+
+            table_row = matching_rows.iloc[0]
+
+            cluster_peak_stat = table_row["Stat"]
+            cluster_p = table_row["p-value"]
+            table_cluster_id = table_row["Cluster"]
+            aal_label = table_row["aal_label"]
+
+            print(
+                f"Cluster {cluster_id}: "
+                f"table Cluster ID = {table_cluster_id}, "
+                f"Peak Stat = {cluster_peak_stat:.3f}, "
+                f"p = {cluster_p:.5f}, "
+                f"aal = {aal_label}"
+            )
+
+            # Get single cluster image
+            single_cluster_img = nib.Nifti1Image(
+                single_cluster_data,
+                affine=cluster_mask.affine,
+                header=cluster_mask.header
+            )
+            single_cluster_img.set_data_dtype(np.uint8)
+
+            # Save cluster mask
+            cluster_filename = f"{file_suffix}_cluster-{cluster_id:02d}_{aal_label}.nii.gz"
+            cluster_path = os.path.join(single_cluster_dir, cluster_filename)
+            single_cluster_img.to_filename(cluster_path)
+
+            cluster_info.append({
+                "cluster_id": cluster_id,
+                "table_cluster_id": table_cluster_id,
+                "aal_label": aal_label,
+                "n_voxels": n_voxels,
+                "peak_stat": cluster_peak_stat,
+                "p_value": cluster_p,
+                "path": cluster_path,
+            })
+            print(
+                f"Saved cluster {cluster_id}: "
+                f"{aal_label} ({n_voxels} voxels)"
+            )
+
+        cluster_info_df = pd.DataFrame(cluster_info)
+
+        # --- Extract connectivity per subject and cluster:
+        for _, cluster_row in cluster_info_df.iterrows():
+            cluster_id = cluster_row["cluster_id"]
+            cluster_path = cluster_row["path"]
+
+            single_cluster_mask = nib.load(cluster_path)
+
+            for _, row in included_subjects_df.iterrows():
+                subject_id = row["subject_id"]
+                group = row["group"]
+
+                voxels = apply_mask(row["img"], single_cluster_mask)
+                mean = np.mean(voxels)
+
+                all_rows.append({
+                    "seed": seed,
+                    "cluster": cluster_id,
+                    "subject_id": subject_id,
+                    "subject_num": row["subject_num"],
+                    "group": group,
+                    "value": mean,
+                    "aal_label": cluster_row["aal_label"],
+                    "n_voxels": cluster_row["n_voxels"],
+                    "peak_stat": cluster_row["peak_stat"],
+                    "p_value": cluster_row["p_value"],
+                })
+
+    connectivity_df = pd.DataFrame(all_rows)
+    return connectivity_df

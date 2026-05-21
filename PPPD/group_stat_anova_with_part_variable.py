@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import os
 import nibabel as nib
 from PPPD import (_get_data_path, _get_derivatives_path, _get_participants_tsv, _get_full_filename, _get_mask_filename,
-                  _get_output_path, _define_group_comparison, _get_selected_subject_list, _get_mask_file)
+                  _get_output_path, _define_group_comparison, _get_selected_subject_list, _get_mask_file, _get_cluster_table_with_aal_labels)
 from PPPD.subjects import subs, subjects_to_exclude
 from nilearn.glm.second_level import SecondLevelModel, non_parametric_inference
 from nilearn.image import threshold_img, math_img
@@ -20,7 +20,7 @@ task = "rest"
 runs = ["run-01", "run-02"] # pre, post
 part = None # supported: None, 1, 2 (None: all subjects; part 1: subjects < 100; part 2: subjects >= 100)
 feature = "seed_based" # supported features: "falff", "seed_based", "alff"
-seeds = ["VermisUvulaL", "VermisVII"] # List of supported seeds:
+seeds = ["OperculumOP1R"] # List of supported seeds:
                                     # "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
                                     # "InsulaOP3RAnat", "InsulaOP3Sphere",
                                     # "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",
@@ -36,7 +36,7 @@ mask_strategy = "subject_based" # supported strategies: "subject_based", "predef
 predefined_mask = "vvn" # supported masks: "dmn", "vvn"
 threshold_mask = 0.8 # only used if mask_strategy == "subject_based"
 # number of permutations for non-parametric cluster-based permutation test
-n_perm = 5000
+n_perm = 10000
 
 
 # --- Load participants.tsv
@@ -55,7 +55,7 @@ selected_subs = _get_selected_subject_list(part, subs, subjects_to_exclude)
 
 # --- Loop over seeds
 for seed in seeds:
-    print(f"=== Running seed: {seed} ===")
+    print(f"\n === Running seed: {seed} === \n")
 
     # --- Output path where diff images already exist
     output_dir = _get_output_path(part, feature, seed)
@@ -187,7 +187,7 @@ for seed in seeds:
     second_level_model = SecondLevelModel(mask_img=analysis_mask)
     second_level_model = second_level_model.fit(diff_imgs, design_matrix=second_level_design)
     # get interaction group x part
-    interaction_z_map = second_level_model.compute_contrast(second_level_contrast="part", output_type="z_score")
+    interaction_z_map = second_level_model.compute_contrast(second_level_contrast="interaction", output_type="z_score")
 
     # Significance test:
     # Version 1: abs(z) > 3.09 (equivalent to p < 0.001 one-sided test), cluster size > 10 voxels
@@ -211,7 +211,7 @@ for seed in seeds:
         perm_out = non_parametric_inference(
             second_level_input=diff_imgs,
             design_matrix=second_level_design,
-            second_level_contrast="part",
+            second_level_contrast="interaction",
             mask=analysis_mask,
             model_intercept=False,  # intercept is already in the design matrix
             n_perm=n_perm,
@@ -250,5 +250,30 @@ for seed in seeds:
             # display.savefig(os.path.join(output_dir, "04_nonparametric", f"{file_suffix}_perm_clustermass_fwer05.png"))
         else:
             print("No clusters survive permutation cluster-mass FWER correction.")
+
+
+    # --- Get cluster table with aal brain atlas
+    logp_mass_thr_float = math_img("img.astype(float)", img=signed_logp_mass_thr)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        cluster_table_perm_mass, label_maps = _get_cluster_table_with_aal_labels(
+            stat_img=logp_mass_thr_float,
+            stat_threshold=neglog_alpha_05,
+            cluster_threshold=0,
+            two_sided=True,
+            return_label_maps=True
+        )
+    label_maps = label_maps[0]
+    print(f"Found {len(label_maps)} label map(s)")
+    # convert peak stat value (-log10(p)) back to real p-value (10^(-p))
+    cluster_p_values = 10 ** (-abs(cluster_table_perm_mass["Peak Stat"]))
+    # insert p-value column after Peak Stat
+    peak_stat_idx = cluster_table_perm_mass.columns.get_loc("Peak Stat") + 1
+    cluster_table_perm_mass.insert(peak_stat_idx, "p-value", cluster_p_values)
+    cluster_table_perm_mass = cluster_table_perm_mass.rename(columns={
+        "Cluster ID": "Cluster",
+        "Peak Stat": "Stat",
+        "Cluster Size (mm3)": "Size (mm3)",
+    })
 
     del second_level_model, interaction_z_map, thresholded_map1, perm_out, sign_z_map, signed_logp_mass_thr, data

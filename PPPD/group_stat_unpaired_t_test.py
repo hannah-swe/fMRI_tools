@@ -21,7 +21,7 @@ import gc
 # --- Script configuration:
 task = "rest"
 run = "run-01" # "run-01" == pre, "run-02" == post
-part = 2 # supported: None, 1, 2 (None: all subjects; part 1: subjects < 100; part 2: subjects >= 100)
+part = None # supported: None, 1, 2 (None: all subjects; part 1: subjects < 100; part 2: subjects >= 100)
 feature = "seed_based" # supported features: "falff", "seed_based", "alff"
 seeds = ["OperculumOP4L"] # List of supported seeds:
                                     # "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
@@ -59,7 +59,7 @@ selected_subs = _get_selected_subject_list(part, subs, subjects_to_exclude)
 for seed in seeds:
     print(f"=== Running seed: {seed} ===")
 
-    # --- Get all directories and participants.tsv:
+    # --- Get all directories:
     # path to halfpipe derivatives directory
     base_dir = _get_data_path(feature, seed)
 

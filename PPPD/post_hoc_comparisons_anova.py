@@ -115,8 +115,6 @@ print("Loaded subjects:", included_df["subject_id"].nunique())
 
 # --- Load mask with significant clusters:
 # get binary positive or negative cluster mask
-mask_path = _get_posthoc_cluster_mask(feature=feature, seed=seed, group_comparison=group_comparison, part=part,
-                                      direction=direction)
 cluster_mask = nib.load(mask_path)
 
 

@@ -453,10 +453,10 @@ def _get_cluster_table_with_juelich_prob_labels(stat_img, stat_threshold, cluste
 
 
 # Get path to significant post-hoc cluster mask
-def _get_posthoc_cluster_mask(feature, group_comparison, direction, part=None, seed=None,):
+def _get_posthoc_cluster_mask(feature, group_comparison, pre_post_diff=True, direction=None, part=None, seed=None,):
     if feature == "seed_based" and seed is None:
         raise ValueError("seed must be provided for seed_based feature.")
-    if direction not in ["positive", "negative"]:
+    if pre_post_diff and direction not in ["positive", "negative"]:
         raise ValueError("direction must be 'positive' or 'negative'")
     if part is None:
         part_label = "all"
@@ -464,11 +464,22 @@ def _get_posthoc_cluster_mask(feature, group_comparison, direction, part=None, s
         part_label = str(part)
 
     # build filename and directory
-    if feature == "seed_based":
-        filename = f"{feature}_{seed}_{group_comparison}_{part_label}_{direction}_cluster_id_map.nii.gz"
+    if pre_post_diff:
+        if feature == "seed_based":
+            filename = f"{feature}_{seed}_{group_comparison}_{part_label}_{direction}_cluster_id_map.nii.gz"
+        else:
+            filename = f"{feature}_{group_comparison}_{part_label}_{direction}_cluster_id_map.nii.gz"
     else:
-        filename = f"{feature}_{group_comparison}_{part_label}_{direction}_cluster_id_map.nii.gz"
-    mask_dir = os.path.join(_get_output_path(part, feature, seed), "pre_post_diff", "sig_cluster_masks", f"{direction}")
+        if feature == "seed_based":
+            filename = f"{feature}_{seed}_{group_comparison}_submask-0.8_logp_clustermass_fwer05.nii.gz"
+        else:
+            filename = f"{feature}_{group_comparison}__submask-0.8_logp_clustermass_fwer05.nii.gz"
+
+    # build directory
+    if pre_post_diff:
+        mask_dir = os.path.join(_get_output_path(part, feature, seed), "pre_post_diff", "sig_cluster_masks", direction)
+    else:
+        mask_dir = os.path.join(_get_output_path(part, feature, seed), "sig_cluster_masks")
     os.makedirs(mask_dir, exist_ok=True)
 
     return os.path.join(mask_dir, filename)
