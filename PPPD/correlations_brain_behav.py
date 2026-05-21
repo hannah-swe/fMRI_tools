@@ -52,4 +52,4 @@ connectivity_df = get_dataframe_for_connectivity_values(seeds, feature, group_co
                                                         participants_df, task, run, part, direction)
 
 
-# --- Load main values table to extract questionnaire and behav data
+# --- Load main values table to extract questionnaire and behavioral data

@@ -510,3 +510,8 @@ def _get_suit_atlas():
     atlas_img = nib.load(os.path.join(suit_path, "atl-Anatom_space-MNI_dseg.nii"))
 
     return lut_file, atlas_img
+
+
+def get_main_values_tables_path():
+    main_values_tables_path = config["main_values_tables_path"]
+    return main_values_tables_path

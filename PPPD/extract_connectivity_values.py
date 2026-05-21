@@ -201,6 +201,7 @@ def get_dataframe_for_connectivity_values(
 
                 voxels = apply_mask(row["img"], single_cluster_mask)
                 mean = np.mean(voxels)
+                median = np.median(voxels)
 
                 all_rows.append({
                     "seed": seed,
@@ -208,7 +209,8 @@ def get_dataframe_for_connectivity_values(
                     "subject_id": subject_id,
                     "subject_num": row["subject_num"],
                     "group": group,
-                    "value": mean,
+                    "mean": mean,
+                    "median": median,
                     "aal_label": cluster_row["aal_label"],
                     "n_voxels": cluster_row["n_voxels"],
                     "peak_stat": cluster_row["peak_stat"],
