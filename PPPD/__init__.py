@@ -515,3 +515,8 @@ def _get_suit_atlas():
 def get_main_values_tables_path():
     main_values_tables_path = config["main_values_tables_path"]
     return main_values_tables_path
+
+
+def get_posturography_path():
+    posturography_path = config["posturography_path"]
+    return posturography_path

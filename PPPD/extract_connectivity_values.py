@@ -27,7 +27,7 @@ def get_dataframe_for_connectivity_values(
     all_rows = []
 
     for seed in seeds:
-        print(f"=== Running seed: {seed} ===")
+        print(f"\n === Running seed: {seed} ===")
 
         # --- Get all directories:
         # path to halfpipe derivatives directory
@@ -49,6 +49,7 @@ def get_dataframe_for_connectivity_values(
             seed=seed,
         )
         cluster_mask = nib.load(mask_path)
+
 
         # --- Define the file suffix
         if feature == "seed_based":
@@ -75,6 +76,17 @@ def get_dataframe_for_connectivity_values(
         # table_file_suffix = f"{table_file_suffix}_{part_label}"
         cluster_table_path = os.path.join(output_dir, "cluster_tables", f"{table_file_suffix}_submask-0.8_cluster_table_perm_mass.csv")
         cluster_table_perm_mass = pd.read_csv(cluster_table_path)
+
+        print("seed:", seed)
+        print("mask_path:", mask_path)
+
+        labeled_data = cluster_mask.get_fdata().astype(int)
+        cluster_ids = sorted(np.unique(labeled_data))
+        cluster_ids = [c for c in cluster_ids if c != 0]
+
+        print("Map cluster IDs:", cluster_ids)
+        print("Table cluster IDs:", sorted(cluster_table_perm_mass["Cluster"].unique()))
+
 
         # --- Load data:
         # initialize lists for derivatives, subject ids and mask images
@@ -219,3 +231,91 @@ def get_dataframe_for_connectivity_values(
 
     connectivity_df = pd.DataFrame(all_rows)
     return connectivity_df
+
+
+# --- Script configuration:
+task = "rest"
+run = "run-01" # "run-01" == pre, "run-02" == post
+part = None # supported: None, 1, 2 (None: all subjects; part 1: subjects < 100; part 2: subjects >= 100)
+feature = "seed_based" # supported features: "falff", "seed_based", "alff"
+seeds = ["InsulaOP3RAnat", "IPLPFcmL", "OperculumOP1L", "OperculumOP1R", "OperculumOP4L", "V1R", "V2R"]
+                                    # List of supported seeds:
+                                    # "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
+                                    # "InsulaOP3RAnat", "InsulaOP3Sphere",
+                                    # "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",
+                                    # "OperculumOP1L", "OperculumOP1R", "OperculumOP2L", "OperculumOP2R", "OperculumOP4L", "OperculumOP4R",
+                                    # "Precuneus",
+                                    # "CSv", "CSvR",
+                                    # "V1L", "V1R", "V2L", "V2R", "V5L", "V5R", "V6L", "V6R",
+                                    # "VermisUvulaL", "VermisVII"
+                        # for feature = "falff" or "alff" do seed = None
+group_comparison = "pat>HC" # supported comparisons: "pat>HC", "HC>pat"
+pre_post_diff = False
+direction = "negative" # possible directions for pre-post differences:
+                        # "positive" (= clusters, where pat>HC), "negative" (= cluster, where HC>pat)
+
+
+# --- Get output path to save dataframes as csv
+output_dir = "/data_wgs04/ag-sensomotorik/PPPD/analysis/group_level/"
+if pre_post_diff is True:
+    file_suffix = "pre-post-diff"
+else:
+    file_suffix = "pre-data"
+filename_long = f"connectivity_{file_suffix}dataframe_long_format.csv"
+filename_wide = f"connectivity_{file_suffix}dataframe_wide_format.csv"
+
+
+# --- Load participants.tsv
+participants_df = _get_participants_tsv()
+participants_df["subject_id"] = participants_df["participant_id"].apply(lambda x: f"sub-{x:03d}")
+
+
+# --- Choose subjects depending on experimental part and exclude subjects who participated in both parts:
+selected_subs = _get_selected_subject_list(part, subs, subjects_to_exclude)
+
+
+# --- Get connectivity dataframe with subject values for all significant cluster per seed
+df = get_dataframe_for_connectivity_values(seeds, feature, group_comparison, pre_post_diff, selected_subs,
+                                                        participants_df, task, run, part, direction)
+
+
+# --- Get connectivity dataframe in wide format
+# make a unique cluster label for column names
+df["cluster_label"] = (
+    df["seed"].astype(str)
+    + "_cluster-"
+    + df["cluster"].astype(str).str.zfill(2)
+    + "_"
+    + df["aal_label"].astype(str)
+)
+
+# convert long to wide
+connectivity_wide_df = df.pivot_table(index="subject_id", columns="cluster_label", values=["mean", "median"],
+                                      aggfunc="first")
+
+# flatten multi-level columns
+connectivity_wide_df.columns = [f"{cluster}_{value_type}" for value_type, cluster in connectivity_wide_df.columns]
+
+# make SubjID a normal column again
+connectivity_wide_df = connectivity_wide_df.reset_index()
+
+# extract subject-level variables
+subject_info_df = df[["subject_id", "subject_num", "group"]].drop_duplicates()
+
+# merge with wide dataframe
+connectivity_wide_df = connectivity_wide_df.merge(subject_info_df, on="subject_id", how="left")
+
+# reorder columns
+front_cols = ["subject_id", "subject_num", "group"]
+other_cols = [
+    col for col in connectivity_wide_df.columns
+    if col not in front_cols
+]
+connectivity_wide_df = connectivity_wide_df[front_cols + other_cols]
+
+
+# --- Save both dataframes
+df.to_csv(os.path.join(output_dir, filename_long), index=False)
+print("saved connectivity df in long format.")
+connectivity_wide_df.to_csv(os.path.join(output_dir, filename_wide), index=False)
+print("saved connectivity df in wide format.")

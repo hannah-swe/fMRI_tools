@@ -1,13 +1,14 @@
 # TODO: add posturography values
+# TODO: save df as csv
 
 import os
 import pandas as pd
 import numpy as np
-from PPPD import (get_main_values_tables_path, _get_selected_subject_list)
+from PPPD import (get_main_values_tables_path, _get_selected_subject_list, get_posturography_path)
 from PPPD.subjects import subs, subjects_to_exclude
 
 part = None # needs to be None here to get th full table!
-
+output_path = os.path.join(get_main_values_tables_path(), "full_dataframe.csv")
 
 # --- Load main values table of both parts
 main_values_tables_path = get_main_values_tables_path()
@@ -92,3 +93,15 @@ neo_df = pd.concat([neo1_df, neo2_df], ignore_index=True)
 # --- Merge main values and neo df
 df = df.merge(neo_df, on="subject_num", how="left")
 df = df.replace(999, np.nan)
+
+
+# --- Load posturography data
+posturography_path = get_posturography_path()
+postu_path1 = os.path.join(posturography_path, "Results_Posturography_Part1_2024Jan12.xlsx")
+postu_path2 = os.path.join(posturography_path, "Results_Posturography_Part2_2026Mar17.xlsx")
+postu1_df = pd.read_excel(postu_path1, sheet_name="Posturo")
+postu2_df = pd.read_excel(postu_path2, sheet_name="Posturo")
+
+
+# --- Save Dataframe as csv
+df.to_csv(output_path, index=False)
