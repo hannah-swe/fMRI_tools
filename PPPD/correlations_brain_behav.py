@@ -1,22 +1,124 @@
-# TODO: 1. script with function to extract connectivity values per subject between each seed with significant cluster (OP <-> Cerebellum, V <-> Cerebellum)
-#  2. get correlation_df with subject values for MMSQ, ALQ, Posturografie (eyes open, firm), Schwelle (???), Depression,
-#  Anxiety, Neuroticism, duration of disease, age
-#  3. get correlation matrix with all values
-#  4. change connectivity df in wide format to save it as a big csv with all questionnaire and behav data
-
 import matplotlib
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 import os
-import nibabel as nib
-from PPPD import (_get_data_path, _get_derivatives_path, _get_participants_tsv, _get_full_filename, _get_output_path,
-                  _get_selected_subject_list, _get_posthoc_cluster_mask, _get_signed_posthoc_map,
-                  _get_cluster_table_with_aal_labels, get_main_values_tables_path)
-from PPPD.extract_connectivity_values import get_dataframe_for_connectivity_values
+from PPPD import (_get_participants_tsv, _get_selected_subject_list, get_main_values_tables_path, get_connectivity_path)
 from PPPD.subjects import subs, subjects_to_exclude
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from scipy.stats import spearmanr
+import statsmodels.api as sm
+
+
+# --- Set up plotting style
+sns.set_theme(style="ticks")
+sns.set_context("talk")
+palette = {"control": "teal", "patient": "hotpink"}
+
+
+# Function to run spearman correlation and robust linear model
+def run_corr(df, brain_var, behavior_var, min_n=3):
+    data = df[[brain_var, behavior_var]].dropna()
+    if len(data) < min_n:
+        return {
+            "brain": brain_var,
+            "behavior": behavior_var,
+            "rho": np.nan,
+            "p": np.nan,
+            "beta": np.nan,
+            "intercept": np.nan,
+            "n": len(data),
+            "status": "too_few_valid_cases"
+        }
+    x = data[behavior_var].astype(float)
+    y = data[brain_var].astype(float)
+    rho, p = spearmanr(x, y)
+    X = sm.add_constant(x, has_constant="add")
+    try:
+        model = sm.RLM(
+            y,
+            X,
+            M=sm.robust.norms.HuberT()
+        )
+        fit = model.fit()
+        beta = fit.params.iloc[1]
+        intercept = fit.params.iloc[0]
+    except Exception as e:
+        beta = np.nan
+        intercept = np.nan
+
+    return {
+        "brain": brain_var,
+        "behavior": behavior_var,
+        "rho": rho,
+        "p": p,
+        "beta": beta,
+        "intercept": intercept,
+        "n": len(data),
+        "status": "ok"
+    }
+
+
+# Function to set up plots
+def plot_corr_from_results(brain_var, behavior_var, results_df):
+    # get raw data for scatterplot
+    data_pat = df_pat[[brain_var, behavior_var]].copy()
+    data_pat["group"] = "patient"
+    data_con = df_con[[brain_var, behavior_var]].copy()
+    data_con["group"] = "control"
+    data = pd.concat([data_con, data_pat], axis=0).dropna()
+
+    # scatterplot
+    plt.figure(figsize=(9, 7))
+    ax = sns.scatterplot(
+        data=data,
+        x=behavior_var,
+        y=brain_var,
+        hue="group",
+        palette=palette,
+        s=90,
+        alpha=0.7
+    )
+    # get stats and regression line
+    stats_text = []
+    for group in ["control", "patient"]:
+        group_data = data[data["group"] == group]
+        row = results_df[
+            (results_df["brain"] == brain_var) &
+            (results_df["behavior"] == behavior_var) &
+            (results_df["group"] == group)
+        ]
+        if row.empty:
+            continue
+        row = row.iloc[0]
+        beta = row["beta"]
+        intercept = row["intercept"]
+        rho = row["rho"]
+        p = row["p"]
+        # if no regression is given
+        if pd.notna(beta) and pd.notna(intercept) and len(group_data) > 0:
+            x_line = np.linspace(
+                group_data[behavior_var].min(),
+                group_data[behavior_var].max(),
+                100
+            )
+            y_line = intercept + beta * x_line
+            ax.plot(
+                x_line,
+                y_line,
+                color=palette[group],
+                linewidth=3
+            )
+        stats_text.append(f"{group}: ρ = {rho:.2f}, p = {p:.3f}")
+    ax.set_title(
+        f"{brain_var} vs {behavior_var}\n"
+        + "\n".join(stats_text)
+    )
+    sns.despine()
+    plt.tight_layout()
+    plt.show()
+
 
 # --- Script configuration:
 task = "rest"
@@ -49,10 +151,101 @@ selected_subs = _get_selected_subject_list(part, subs, subjects_to_exclude)
 
 
 # --- Get connectivity dataframe with subject values for all significant cluster per seed
-connectivity_df = get_dataframe_for_connectivity_values(seeds, feature, group_comparison, pre_post_diff, selected_subs,
-                                                        participants_df, task, run, part, direction)
+connectivity_df_path = os.path.join(get_connectivity_path(), "connectivity_pre-datadataframe_wide_format.csv")
+connectivity_df = pd.read_csv(connectivity_df_path)
 
 
 # --- Load full main values table for questionnaire, behavioral and posturography data
 main_df_path = os.path.join(get_main_values_tables_path(), "full_dataframe.csv")
 main_df = pd.read_csv(main_df_path)
+
+
+# --- Merge connectivity and main values dataframe
+assert main_df["subject_num"].is_unique
+assert connectivity_df["subject_num"].is_unique
+df_full = main_df.merge(
+    connectivity_df,
+    on="subject_num",
+    how="left",
+    suffixes=("_main", "_conn")
+)
+# quality check: ensure group labels are identical
+if not (df_full["group_main"] == df_full["group_conn"]).all():
+    mismatches = df_full.loc[
+        df_full["group_main"] != df_full["group_conn"],
+        ["subject_num", "group_main", "group_conn"]
+    ]
+    raise ValueError(
+        f"Mismatch found in group labels:\n{mismatches}"
+    )
+# clean up columns
+df_full = df_full.drop(columns=["group_conn", "subject_id"])
+df_full = df_full.rename(columns={"group_main": "group"})
+
+
+# --- Get dataframes split by group
+df_pat = df_full[df_full["group"] == "patient"]
+df_con = df_full[df_full["group"] == "control"]
+
+
+# --- Define all correlation analyses
+brain_vars = [
+    "IPLPFcmL_cluster-01_Vermis_8_median",
+    "InsulaOP3RAnat_cluster-01_Cerebellum_Crus2_L_median",
+    "OperculumOP1L_cluster-01_Vermis_8_median",
+    "OperculumOP1R_cluster-01_Vermis_8_median",
+    "V1R_cluster-01_Cerebellum_9_R_median",
+    "V2R_cluster-01_Vermis_9_median",
+    "V5L_cluster-01_Cerebellum_6_R_median"
+]
+
+behavior_vars = [
+    "age",
+    "disease_duration",
+    "GVS_threshold_mri",
+    "ALQ_total",
+    "Niigata_total",
+    "MSSQ_raw",
+    "HADS_A_total",
+    "HADS_D_total",
+    "Neo.Skala_n",
+    "EOfirm_speed"
+]
+
+
+# --- Correlate all predefined analyses
+results = []
+for brain_var in brain_vars:
+    for behavior_var in behavior_vars:
+        # patients
+        res_pat = run_corr(
+            df_pat,
+            brain_var,
+            behavior_var
+        )
+        res_pat["group"] = "patient"
+        results.append(res_pat)
+
+        # controls
+        res_con = run_corr(
+            df_con,
+            brain_var,
+            behavior_var
+        )
+        res_con["group"] = "control"
+        results.append(res_con)
+
+# one results dataframe
+results_df = pd.DataFrame(results)
+
+
+# --- Plot correlation p < 0.1
+# filter for interesting results
+sig_results = results_df[results_df["p"] < 0.1].copy()
+sig_pairs = sig_results[["brain", "behavior"]].drop_duplicates()
+for _, row in sig_pairs.iterrows():
+    plot_corr_from_results(
+        row["brain"],
+        row["behavior"],
+        results_df
+    )

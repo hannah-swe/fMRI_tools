@@ -238,7 +238,7 @@ task = "rest"
 run = "run-01" # "run-01" == pre, "run-02" == post
 part = None # supported: None, 1, 2 (None: all subjects; part 1: subjects < 100; part 2: subjects >= 100)
 feature = "seed_based" # supported features: "falff", "seed_based", "alff"
-seeds = ["InsulaOP3RAnat", "IPLPFcmL", "OperculumOP1L", "OperculumOP1R", "OperculumOP4L", "V1R", "V2R"]
+seeds = ["InsulaOP3RAnat", "IPLPFcmL", "OperculumOP1L", "OperculumOP1R", "OperculumOP4L", "V1R", "V2R", "V5L"]
                                     # List of supported seeds:
                                     # "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
                                     # "InsulaOP3RAnat", "InsulaOP3Sphere",

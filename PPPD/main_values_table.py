@@ -1,6 +1,3 @@
-# TODO: add posturography values
-# TODO: save df as csv
-
 import os
 import pandas as pd
 import numpy as np
@@ -73,6 +70,16 @@ df = df.rename(columns={
     "GVSthresholdMRI": "GVS_threshold_mri",
     "GVSthresholdBehav": "GVS_threshold_behav",
 })
+# create group labels
+group_values = df["Group"].map({
+    3: "control",
+    1: "patient",
+    2: "patient",
+})
+# get position of "Group"
+group_idx = df.columns.get_loc("Group")
+# insert new column directly after "Group"
+df.insert(group_idx + 1, "group", group_values)
 
 
 # --- Select columns to keep for neo df
@@ -97,10 +104,35 @@ df = df.replace(999, np.nan)
 
 # --- Load posturography data
 posturography_path = get_posturography_path()
-postu_path1 = os.path.join(posturography_path, "Results_Posturography_Part1_2024Jan12.xlsx")
-postu_path2 = os.path.join(posturography_path, "Results_Posturography_Part2_2026Mar17.xlsx")
-postu1_df = pd.read_excel(postu_path1, sheet_name="Posturo")
-postu2_df = pd.read_excel(postu_path2, sheet_name="Posturo")
+postu_path1 = os.path.join(posturography_path, "PosturoData_complete_Feb2024.xlsx")
+postu_path2 = os.path.join(posturography_path, "BehavioralData_2026May26.xlsx")
+
+postu1_df = pd.read_excel(postu_path1)
+postu2_df = pd.read_excel(postu_path2, sheet_name="BehavioralData")
+
+
+# --- Keep only selected subjects
+postu1_df = postu1_df[postu1_df["SubjID"].isin(selected_subs)]
+postu2_df = postu2_df[postu2_df["SubjID"].isin(selected_subs)]
+
+
+# --- Select columns to keep for posturography data
+columns_to_keep_postu1 = ["SubjID", "SwaySpeed.1.0.0"]
+columns_to_keep_postu2 = ["SubjID", "EOfirm"]
+
+postu1_df = postu1_df[columns_to_keep_postu1]
+postu2_df = postu2_df[columns_to_keep_postu2]
+
+postu1_df = postu1_df.rename(columns={"SubjID": "subject_num", "SwaySpeed.1.0.0": "EOfirm_speed"})
+postu2_df = postu2_df.rename(columns={"SubjID": "subject_num", "EOfirm": "EOfirm_speed"})
+
+
+# --- Concatenate posturography dataframes
+postu_df = pd.concat([postu1_df, postu2_df], ignore_index=True)
+
+
+# --- Merge main values and posturography df
+df = df.merge(postu_df, on="subject_num", how="left")
 
 
 # --- Save Dataframe as csv

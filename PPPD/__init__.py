@@ -471,9 +471,9 @@ def _get_posthoc_cluster_mask(feature, group_comparison, pre_post_diff=True, dir
             filename = f"{feature}_{group_comparison}_{part_label}_{direction}_cluster_id_map.nii.gz"
     else:
         if feature == "seed_based":
-            filename = f"{feature}_{seed}_{group_comparison}_submask-0.8_logp_clustermass_fwer05.nii.gz"
+            filename = f"{feature}_{seed}_{group_comparison}_{part_label}_cluster_id_map.nii.gz"
         else:
-            filename = f"{feature}_{group_comparison}__submask-0.8_logp_clustermass_fwer05.nii.gz"
+            filename = f"{feature}_{group_comparison}_{part_label}_cluster_id_map.nii.gz"
 
     # build directory
     if pre_post_diff:
@@ -520,3 +520,8 @@ def get_main_values_tables_path():
 def get_posturography_path():
     posturography_path = config["posturography_path"]
     return posturography_path
+
+
+def get_connectivity_path():
+    connectivity_path = config["connectivity_path"]
+    return connectivity_path
