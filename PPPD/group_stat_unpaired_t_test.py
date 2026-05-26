@@ -23,7 +23,7 @@ task = "rest"
 run = "run-01" # "run-01" == pre, "run-02" == post
 part = None # supported: None, 1, 2 (None: all subjects; part 1: subjects < 100; part 2: subjects >= 100)
 feature = "seed_based" # supported features: "falff", "seed_based", "alff"
-seeds = ["OperculumOP4L"] # List of supported seeds:
+seeds = ["V5L"] # List of supported seeds:
                                     # "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
                                     # "InsulaOP3RAnat", "InsulaOP3Sphere",
                                     # "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",
@@ -77,13 +77,13 @@ for seed in seeds:
     else:
         base_title = f"{feature}; {group_comparison}"
         file_suffix = f"{feature}_{group_comparison}"
-    if mask_strategy == "subject_based":
-        mask_label = f"submask-{threshold_mask}"
-        base_title = f"{base_title}; subject mask {threshold_mask}"
+    if part is None:
+        part_label = "all"
+        base_title = f"{base_title}; subjects: {part_label}"
     else:
-        mask_label = predefined_mask
-        base_title = f"{base_title}; mask {predefined_mask}"
-    file_suffix = f"{file_suffix}_{mask_label}"
+        part_label = f"{part}"
+        base_title = f"{base_title}; subjects part: {part_label}"
+    file_suffix = f"{file_suffix}_{part_label}"
 
 
     # --- Load data:
@@ -234,7 +234,7 @@ for seed in seeds:
     logp_mass_thr = threshold_img(perm_out["logp_max_mass"], threshold=neglog_alpha_05, two_sided=False)
 
     # Save significant cluster mask
-    perm_mask_dir = os.path.join(output_dir, "sig_cluster_masks")
+    perm_mask_dir = os.path.join(output_dir, "tresh_cluster_masks")
     os.makedirs(perm_mask_dir, exist_ok=True)
     logp_mass_path = os.path.join(perm_mask_dir, f"{file_suffix}_logp_clustermass_fwer05.nii.gz")
     logp_mass_thr.to_filename(logp_mass_path)
@@ -258,16 +258,17 @@ for seed in seeds:
 
     # --- Get cluster table with aal and julich brain atlas
     # create a binary/significant map from cluster-size corrected output
-    sig_cluster_mass_map = math_img(f"img > {neglog_alpha_05}", img=perm_out["logp_max_mass"])
     logp_mass_thr_float = math_img("img.astype(float)", img=perm_out["logp_max_mass"])
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        cluster_table_perm_mass = _get_cluster_table_with_aal_labels(
+        cluster_table_perm_mass, label_maps = _get_cluster_table_with_aal_labels(
             stat_img=logp_mass_thr_float,
             stat_threshold=neglog_alpha_05,   # binary image after math_img
             cluster_threshold=0,
             two_sided=False,
+            return_label_maps=True,
         )
+    label_maps = label_maps[0]
     cluster_table_perm_mass["p-value"] = (10 ** (-cluster_table_perm_mass["Peak Stat"]))
 
     with warnings.catch_warnings():
@@ -305,10 +306,24 @@ for seed in seeds:
     cluster_table_path = os.path.join(cluster_table_dir, f"{file_suffix}_cluster_table_perm_mass.csv")
     cluster_table_combined.to_csv(cluster_table_path, index=False)
 
+    # save significant cluster mask as true cluster-ID map
+    posthoc_mask_dir = os.path.join(output_dir, "sig_cluster_masks")
+    os.makedirs(posthoc_mask_dir, exist_ok=True)
+    if len(label_maps) == 0:
+        print("No significant cluster ID maps to save.")
+    else:
+        for lm in label_maps:
+            lm_path = os.path.join(
+                posthoc_mask_dir,
+                f"{file_suffix}_cluster_id_map.nii.gz"
+            )
+            lm.to_filename(lm_path)
+            print(f"Saved cluster ID map: {lm_path}")
+
 
     # --- Clean up memory after each seed
     # plt.close("all")
     del (derivative_nii, included_subjects, sub_mask_imgs, analysis_mask, second_level_model_unpaired, z_map,
-        thresholded_map1, thr1_data, perm_out, logp_mass_thr, sig_cluster_mass_map, logp_mass_thr_float, cluster_table1,
-        report_v1, cluster_table_perm_mass, cluster_table_perm_mass_juelich, cluster_table_combined)
+        thresholded_map1, thr1_data, perm_out, logp_mass_thr, logp_mass_thr_float, cluster_table1, report_v1,
+        cluster_table_perm_mass, cluster_table_perm_mass_juelich, cluster_table_combined, label_maps, lm)
     gc.collect()
