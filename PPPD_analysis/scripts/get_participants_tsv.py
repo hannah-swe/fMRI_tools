@@ -1,5 +1,5 @@
 import pandas as pd
-from bad_subjects import exclude_part1, exclude_part2
+from PPPD_analysis.scripts.bad_subjects import exclude_part1, exclude_part2
 
 # get .tsv file for participants of PPPD Part 1
 # path to input and output files
@@ -39,10 +39,15 @@ print("tsv-file successfully saved:", output_file1)
 # path to input and output files
 input_file2 = "W:/PPPD/Auswertung_Part2/PPPD_Part2_main_values_Questionnaires.xlsx"
 output_file2 = "W:/PPPD/Auswertung_Part2/MRI/RestingState/participants_PPPD2.tsv"
+output_file_missing_8 = "W:/PPPD/Auswertung_Part2/MRI/RestingState/participants_PPPD2_last8.tsv"
 
 # load excel file
 df2 = pd.read_excel(input_file2)
 df2["participant_id"] = df2["SubjID"].astype(str).str.zfill(3)
+
+
+df_missing_8 = df2[df2["SubjID"] >= 173].copy()
+
 
 # exclude subjects
 df2 = df2[df2["Ausschluss"] == 0]
@@ -67,4 +72,24 @@ final_df2 = df2[[
 # save as .tsv
 final_df2.to_csv(output_file2, sep="\t", index=False)
 print("tsv-file successfully saved:", output_file2)
+
+# get new columns
+df_missing_8["age"] = df_missing_8["Age2"].astype(int)
+df_missing_8["sex"] = df_missing_8["Gender"].str.upper()
+df_missing_8["group"] = df_missing_8["Group"].apply(lambda x: "control" if x == 3 else "patient")
+# mri_pat_id = "CBBM" + MRI_Number
+df_missing_8["mri_pat_id"] = "CBBM" + df_missing_8["MRI_Number"].astype(int).astype(str)
+
+# keep only necessary columns and set their oder
+final_df_missing_8 = df_missing_8[[
+    "participant_id",
+    "age",
+    "sex",
+    "group",
+    "mri_pat_id"
+]]
+
+# save as .tsv
+final_df_missing_8.to_csv(output_file_missing_8, sep="\t", index=False)
+print("tsv-file successfully saved:", output_file_missing_8)
 
