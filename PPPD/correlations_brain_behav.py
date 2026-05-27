@@ -11,12 +11,6 @@ from scipy.stats import spearmanr
 import statsmodels.api as sm
 
 
-# --- Set up plotting style
-sns.set_theme(style="ticks")
-sns.set_context("talk")
-palette = {"control": "teal", "patient": "hotpink"}
-
-
 # Function to run spearman correlation and robust linear model
 def run_corr(df, brain_var, behavior_var, min_n=3):
     data = df[[brain_var, behavior_var]].dropna()
@@ -60,6 +54,59 @@ def run_corr(df, brain_var, behavior_var, min_n=3):
     }
 
 
+def plot_corr_heatmap(results_df, group):
+    df_g = results_df[results_df["group"] == group].copy()
+    rho_df = df_g.pivot(index="behavior", columns="brain", values="rho")
+    p_df = df_g.pivot(index="behavior", columns="brain", values="p")
+
+    rho_df = rho_df.reindex(index=behavior_vars, columns=brain_vars)
+    p_df = p_df.reindex(index=behavior_vars, columns=brain_vars)
+
+    rho_plot = rho_df.rename(index=behavior_labels, columns=brain_labels)
+    p_plot = p_df.rename(index=behavior_labels, columns=brain_labels)
+
+    plt.figure(figsize=(7, 7))
+    ax = sns.heatmap(
+        rho_plot,
+        cmap="coolwarm",
+        center=0,
+        vmin=-0.5,
+        vmax=0.5,
+        annot=False,
+        linewidths=0.5,
+        square=True,
+        cbar_kws={"label": "Spearman ρ"}
+    )
+
+    # p-Werte manuell einzeichnen mit unterschiedlichem Alpha
+    for i in range(p_plot.shape[0]):
+        for j in range(p_plot.shape[1]):
+            p = p_plot.iloc[i, j]
+            if pd.isna(p):
+                continue
+
+            alpha = 1.0 if p < 0.05 else 0.25
+            ax.text(
+                j + 0.5,
+                i + 0.5,
+                f"{p:.3f}",
+                ha="center",
+                va="center",
+                color="black",
+                alpha=alpha,
+                fontsize=10
+            )
+    ax.set_title(f"{group}: Spearman correlations")
+    ax.set_xlabel("Functional connectivity")
+    ax.set_ylabel("Behavior variable")
+    plt.xticks(rotation=45, ha="right")
+    plt.yticks(rotation=0)
+    plt.tight_layout()
+    plt.show()
+
+    return rho_df, p_df
+
+
 # Function to set up plots
 def plot_corr_from_results(brain_var, behavior_var, results_df):
     # get raw data for scatterplot
@@ -78,7 +125,8 @@ def plot_corr_from_results(brain_var, behavior_var, results_df):
         hue="group",
         palette=palette,
         s=90,
-        alpha=0.7
+        alpha=0.7,
+        legend=False,
     )
     # get stats and regression line
     stats_text = []
@@ -239,9 +287,41 @@ for brain_var in brain_vars:
 results_df = pd.DataFrame(results)
 
 
+# --- New labels for all variables
+brain_labels = {
+    "IPLPFcmL_cluster-01_Vermis_8_median": "IPL–Verm",
+    "InsulaOP3RAnat_cluster-01_Cerebellum_Crus2_L_median": "OP3–Crus2",
+    "OperculumOP1L_cluster-01_Vermis_8_median": "OP1–Verm",
+    "OperculumOP1R_cluster-01_Vermis_8_median": "OP1–Verm",
+    "V1R_cluster-01_Cerebellum_9_R_median": "V1–Cb9",
+    "V2R_cluster-01_Vermis_9_median": "V2–Verm",
+    "V5L_cluster-01_Cerebellum_6_R_median": "V5–Cb6",
+}
+behavior_labels = {
+    "age": "Age",
+    "disease_duration": "DoD",
+    "GVS_threshold_mri": "GVS-thresh",
+    "ALQ_total": "ALQ",
+    "Niigata_total": "Niigata",
+    "MSSQ_raw": "MSSQ",
+    "HADS_A_total": "HADS-A",
+    "HADS_D_total": "HADS-D",
+    "Neo.Skala_n": "Neo_N",
+    "EOfirm_speed": "Sway-speed",
+}
+
+
+# --- Plot heatmap with all correlations
+rho_pat, p_pat = plot_corr_heatmap(results_df, "patient")
+rho_con, p_con = plot_corr_heatmap(results_df, "control")
+
+
 # --- Plot correlation p < 0.1
 # filter for interesting results
-sig_results = results_df[results_df["p"] < 0.1].copy()
+sns.set_theme(style="ticks")
+sns.set_context("talk")
+palette = {"control": "teal", "patient": "hotpink"}
+sig_results = results_df[results_df["p"] < 0.05].copy()
 sig_pairs = sig_results[["brain", "behavior"]].drop_duplicates()
 for _, row in sig_pairs.iterrows():
     plot_corr_from_results(
