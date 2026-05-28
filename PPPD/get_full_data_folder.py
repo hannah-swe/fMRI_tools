@@ -2,7 +2,7 @@ from pathlib import Path
 import os
 import shutil
 import yaml
-from subjects import subs, subjects_to_exclude
+from subjects import subs
 
 
 # --- List of all supported seeds
@@ -52,6 +52,7 @@ data_paths = {
     "seed1": os.path.join(analysis_path, "both_parts_seed1", "derivatives", "halfpipe"),
     "seed2": os.path.join(analysis_path, "both_parts_seed2", "derivatives", "halfpipe"),
     "falff": os.path.join(analysis_path, "both_parts_falff", "derivatives", "halfpipe"),
+    "missing8": os.path.join(analysis_path, "missing8", "derivatives", "halfpipe"),
 }
 
 
@@ -81,10 +82,16 @@ for s in subs:
     for feature in features:
         for run in runs:
             if feature == "falff":
+                if s >= 173:
+                    base_path = data_paths["missing8"]
+                else:
+                    base_path = data_paths["falff"]
+
                 # statmap
                 filename = get_filename(subject_id, task, run, feature)
-                source_file = os.path.join(data_paths["falff"], subject_id, "func", f"task-{task}", filename)
+                source_file = os.path.join(base_path, subject_id, "func", f"task-{task}", filename)
                 target_file = os.path.join(subject_out_dir, filename)
+
                 if os.path.exists(source_file):
                     shutil.copy2(source_file, target_file)
                     copied_files.append(source_file)
@@ -93,8 +100,9 @@ for s in subs:
 
                 # mask
                 mask_filename = f"{subject_id}_task-{task}_{run}_feature-fALFF_mask.nii.gz"
-                mask_source = os.path.join(data_paths["falff"], subject_id, "func", f"task-{task}", mask_filename)
+                mask_source = os.path.join(base_path, subject_id, "func", f"task-{task}", mask_filename)
                 mask_target = os.path.join(subject_out_dir, mask_filename)
+
                 if os.path.exists(mask_source):
                     shutil.copy2(mask_source, mask_target)
                     copied_files.append(mask_source)
@@ -105,14 +113,20 @@ for s in subs:
                 for seed in seeds:
                     # statmap
                     filename = get_filename(subject_id, task, run, feature, seed)
-                    if seed in SEEDS_1:
-                        base_path = data_paths["seed1"]
-                    elif seed in SEEDS_2:
-                        base_path = data_paths["seed2"]
+
+                    if s >= 173:
+                        base_path = data_paths["missing8"]
                     else:
-                        raise ValueError(f"Unknown seed: {seed}")
+                        if seed in SEEDS_1:
+                            base_path = data_paths["seed1"]
+                        elif seed in SEEDS_2:
+                            base_path = data_paths["seed2"]
+                        else:
+                            raise ValueError(f"Unknown seed: {seed}")
+
                     source_file = os.path.join(base_path, subject_id, "func", f"task-{task}", filename)
                     target_file = os.path.join(subject_out_dir, filename)
+
                     if os.path.exists(source_file):
                         shutil.copy2(source_file, target_file)
                         copied_files.append(source_file)
@@ -120,12 +134,11 @@ for s in subs:
                         missing_files.append(source_file)
 
                     # mask
-                    mask_filename = (
-                        f"{subject_id}_task-{task}_{run}"
-                        f"_feature-seedbased_seed-{seed}_mask.nii.gz"
-                    )
+                    mask_filename = (f"{subject_id}_task-{task}_{run}_feature-seedbased_seed-{seed}_mask.nii.gz")
+
                     mask_source = os.path.join(base_path, subject_id, "func", f"task-{task}", mask_filename)
                     mask_target = os.path.join(subject_out_dir, mask_filename)
+
                     if os.path.exists(mask_source):
                         shutil.copy2(mask_source, mask_target)
                         copied_files.append(mask_source)

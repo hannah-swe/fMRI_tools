@@ -2,12 +2,6 @@ import os
 import yaml
 import pandas as pd
 import nibabel as nib
-import numpy as np
-import xml.etree.ElementTree as ET
-from nilearn.image import load_img
-from nilearn.reporting import get_clusters_table
-from scipy.spatial.distance import cdist
-from nilearn.datasets import fetch_atlas_juelich
 
 
 SUPPORTED_TASKS = ["rest"]
@@ -32,7 +26,6 @@ with open(config_file, "r") as f:
     config = yaml.safe_load(f)
 
 analysis_path = config["analysis_path"]
-raw_data_path = config["raw_data_path"]
 output_path = config["output_path"]
 mask_path = config["mask_path"]
 aal_path = config["aal_path"]
@@ -40,28 +33,14 @@ suit_path = config["suit_path"]
 
 
 # Gets the path for analysis folder based on the selected feature
-def _get_data_path(feature, seed=None):
+def get_derivatives_path(feature):
     if feature not in SUPPORTED_FEATURES:
         raise ValueError(f"Unsupported feature: {feature}")
-
-    if feature == "seed_based":
-        if seed is None:
-            raise ValueError("For feature = 'seed_based', a seed must be provided")
-        if seed in SUPPORTED_SEEDS_1:
-            return os.path.join(analysis_path, "both_parts_seed1")
-        if seed in SUPPORTED_SEEDS_2:
-            return os.path.join(analysis_path, "both_parts_seed2")
-        raise ValueError(f"Unsupported seed: {seed}")
-
-    if feature == "falff":
-        return os.path.join(analysis_path, "both_parts_falff")
-    if feature == "alff":
-        return os.path.join(analysis_path, "both_parts_falff")
-
-    return None
+    return os.path.join(analysis_path, "HALFpipe_output")
 
 
 # Gets the part for the derivatives folder based on the selected feature
+"""
 def _get_derivatives_path(feature, seed=None):
     if feature not in SUPPORTED_FEATURES:
         raise ValueError(f"Unsupported feature: {feature}")
@@ -78,11 +57,12 @@ def _get_derivatives_path(feature, seed=None):
     if feature == "alff":
         return os.path.join(analysis_path, "both_parts_falff", "derivatives", "halfpipe")
     return None
+"""
 
 
 # Gets participants.tsv from data folder
-def _get_participants_tsv():
-    tsv_path = os.path.join(raw_data_path, "participants.tsv")
+def get_participants_tsv():
+    tsv_path = os.path.join(analysis_path, "HALFpipe_output", "participants.tsv")
     if not os.path.exists(tsv_path):
         raise FileNotFoundError(f"No participants.tsv found in {tsv_path}")
     df = pd.read_csv(tsv_path, sep="\t")
@@ -91,7 +71,7 @@ def _get_participants_tsv():
 
 
 # Gets full filename for statistical maps via run, feature and seed
-def _get_full_filename(subject_id, task, run, feature, seed=None):
+def get_full_filename(subject_id, task, run, feature, seed=None):
     if task not in SUPPORTED_TASKS:
         raise ValueError(f"Unsupported task: {task}")
     if run not in SUPPORTED_RUNS:
@@ -114,7 +94,7 @@ def _get_full_filename(subject_id, task, run, feature, seed=None):
 
 
 # Gets the filename of subject-wise brain masks to create a group wide brain mask
-def _get_mask_filename(subject_id, task, run, feature, seed=None):
+def get_mask_filename(subject_id, task, run, feature, seed=None):
     if feature == 'seed_based':
         if seed not in SUPPORTED_SEEDS:
             raise ValueError(f"Unsupported seed: {seed}")
@@ -130,7 +110,7 @@ def _get_mask_filename(subject_id, task, run, feature, seed=None):
 
 
 # Gets output path
-def _get_output_path(part, feature, seed=None):
+def get_output_path(part, feature, seed=None):
     if feature == "seed_based":
         if seed is None:
             raise ValueError("For feature='seed_based', you must provide a seed.")
@@ -179,7 +159,7 @@ def _get_output_path(part, feature, seed=None):
 
 
 # Gets mask path and load predefined mask file
-def _get_mask_file(predefined_mask):
+def get_mask_file(predefined_mask):
     if predefined_mask not in SUPPORTED_MASKS:
         raise ValueError(f"Unsupported mask: {predefined_mask}")
     mask_dir = os.path.join(mask_path, f"{predefined_mask}_mask_resampled.nii.gz")
@@ -192,7 +172,7 @@ def _get_mask_file(predefined_mask):
 
 
 # Define croup comparison
-def _define_group_comparison(group_comparison):
+def define_group_comparison(group_comparison):
     if group_comparison == "pat>HC":
         group_mapping = {
             "patient": 1,
@@ -207,8 +187,8 @@ def _define_group_comparison(group_comparison):
     return group_mapping
 
 
-#
-def _get_selected_subject_list(part, subs, subjects_to_exclude):
+# List of selected subjects based on subjects.py
+def get_selected_subject_list(part, subs, subjects_to_exclude):
     if part is None:
         selected_subs = [s for s in subs if s not in subjects_to_exclude]
     elif part == 1:
@@ -222,15 +202,14 @@ def _get_selected_subject_list(part, subs, subjects_to_exclude):
 
     return selected_subs
 
-
+"""
 # Load manually downloaded AAL atlas (NIfTI + XML) from local directory
 def _load_local_aal_atlas(aal_dir=aal_path):
-    """
-    Returns:
-    atlas_img : nibabel image
-    atlas_data : np.ndarray
-    value_to_label : dict[int, str]
-    """
+    # Returns:
+    # atlas_img : nibabel image
+    # atlas_data : np.ndarray
+    # value_to_label : dict[int, str]
+
     nii_path = os.path.join(aal_dir, "AAL3v1.nii")
     xml_path = os.path.join(aal_dir, "AAL3v1.xml")
     if not os.path.exists(nii_path):
@@ -301,8 +280,8 @@ def _coord_to_label_and_distance(x, y, z, atlas_img, atlas_data, value_to_label)
 
 
 # Extract cluster table from a stat image and annotate peak coordinates with AAL atlas labels
-def _get_cluster_table_with_aal_labels(stat_img, stat_threshold, cluster_threshold=0, two_sided=False,
-                                       min_distance=8.0, aal_dir=aal_path, return_label_maps=False):
+def get_cluster_table_with_aal_labels(stat_img, stat_threshold, cluster_threshold=0, two_sided=False,
+                                      min_distance=8.0, aal_dir=aal_path, return_label_maps=False):
     result  = get_clusters_table(
         stat_img,
         stat_threshold=stat_threshold,
@@ -351,8 +330,8 @@ def _get_cluster_table_with_aal_labels(stat_img, stat_threshold, cluster_thresho
     if return_label_maps:
         return clusters_table, label_maps
     return clusters_table
-
-
+"""
+"""
 # Load Juelich brain atlas
 def _load_juelich_prob_atlas(atlas_name="prob-2mm"):
     atlas = fetch_atlas_juelich(atlas_name)
@@ -411,8 +390,8 @@ def _coord_to_juelich_prob_labels_sphere(x, y, z, atlas_img, atlas_data, labels,
 
 
 # Get the significant cluster table with labels of probabilistic juelich brain atlas
-def _get_cluster_table_with_juelich_prob_labels(stat_img, stat_threshold, cluster_threshold=0, two_sided=False,
-                                                min_distance=8.0, atlas_name="prob-2mm", top_n=5, min_prob=0 ):
+def get_cluster_table_with_juelich_prob_labels(stat_img, stat_threshold, cluster_threshold=0, two_sided=False,
+                                               min_distance=8.0, atlas_name="prob-2mm", top_n=5, min_prob=0 ):
     clusters_table = get_clusters_table(
         stat_img,
         stat_threshold=stat_threshold,
@@ -450,10 +429,10 @@ def _get_cluster_table_with_juelich_prob_labels(stat_img, stat_threshold, cluste
     )
 
     return clusters_table
-
+"""
 
 # Get path to significant post-hoc cluster mask
-def _get_posthoc_cluster_mask(feature, group_comparison, pre_post_diff=True, direction=None, part=None, seed=None,):
+def get_posthoc_cluster_mask(feature, group_comparison, pre_post_diff=True, direction=None, part=None, seed=None,):
     if feature == "seed_based" and seed is None:
         raise ValueError("seed must be provided for seed_based feature.")
     if pre_post_diff and direction not in ["positive", "negative"]:
@@ -477,16 +456,16 @@ def _get_posthoc_cluster_mask(feature, group_comparison, pre_post_diff=True, dir
 
     # build directory
     if pre_post_diff:
-        mask_dir = os.path.join(_get_output_path(part, feature, seed), "pre_post_diff", "sig_cluster_masks", direction)
+        mask_dir = os.path.join(get_output_path(part, feature, seed), "pre_post_diff", "sig_cluster_masks", direction)
     else:
-        mask_dir = os.path.join(_get_output_path(part, feature, seed), "sig_cluster_masks")
+        mask_dir = os.path.join(get_output_path(part, feature, seed), "sig_cluster_masks")
     os.makedirs(mask_dir, exist_ok=True)
 
     return os.path.join(mask_dir, filename)
 
 
 # Get signed cluster-mass corrected permutation map
-def _get_signed_posthoc_map(feature, group_comparison, part=None, seed=None,):
+def get_signed_posthoc_map(feature, group_comparison, part=None, seed=None,):
     if feature == "seed_based" and seed is None:
         raise ValueError("seed must be provided for seed_based feature.")
     if part is None:
@@ -498,14 +477,14 @@ def _get_signed_posthoc_map(feature, group_comparison, part=None, seed=None,):
     else:
         filename = f"{feature}_{group_comparison}_{part_label}_signed_logp_clustermass_fwer05.nii.gz"
 
-    map_dir = os.path.join(_get_output_path(part, feature, seed), "pre_post_diff", "sig_cluster_masks", "signed")
+    map_dir = os.path.join(get_output_path(part, feature, seed), "pre_post_diff", "sig_cluster_masks", "signed")
     os.makedirs(map_dir, exist_ok=True)
 
     return os.path.join(map_dir, filename)
 
 
 # Get SUIT atlas image and lut image
-def _get_suit_atlas():
+def get_suit_atlas():
     lut_file = os.path.join(suit_path, "atl-Anatom.lut")
     atlas_img = nib.load(os.path.join(suit_path, "atl-Anatom_space-MNI_dseg.nii"))
 
