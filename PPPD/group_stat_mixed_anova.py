@@ -3,10 +3,10 @@ matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 import os
 import nibabel as nib
-from PPPD import (_get_data_path, _get_derivatives_path, _get_participants_tsv, _get_full_filename, _get_mask_filename,
-                  _get_output_path, _define_group_comparison, _get_selected_subject_list, _get_mask_file,
-                  _get_cluster_table_with_aal_labels)
+from PPPD import (get_derivatives_path, get_participants_tsv, get_full_filename, get_mask_filename,
+                  get_output_path, define_group_comparison, get_selected_subject_list, get_mask_file)
 from PPPD.subjects import subs, subjects_to_exclude
+from PPPD.utils import get_cluster_table_with_aal_labels
 from nilearn.glm.second_level import SecondLevelModel, non_parametric_inference
 from nilearn.image import threshold_img, math_img
 from nilearn.plotting import plot_stat_map, plot_design_matrix, plot_glass_brain
@@ -22,7 +22,7 @@ task = "rest"
 runs = ["run-01", "run-02"] # pre, post
 part = None # supported: None, 1, 2 (None: all subjects; part 1: subjects < 100; part 2: subjects >= 100)
 feature = "seed_based" # supported features: "falff", "seed_based", "alff"
-seeds = ["CSvR"] # List of supported seeds:
+seeds = ["IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR"] # List of supported seeds:
                                     # "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
                                     # "InsulaOP3RAnat", "InsulaOP3Sphere",
                                     # "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",
@@ -42,31 +42,27 @@ n_perm = 10000
 
 
 # --- Load participants.tsv
-participants_df = _get_participants_tsv()
+participants_df = get_participants_tsv()
 participants_df["subject_id"] = participants_df["participant_id"].apply(lambda x: f"sub-{x:03d}")
+
+# path to halfpipe derivatives directory
+deriv_dir = get_derivatives_path(feature)
 
 
 # --- Group mapping for contrast via predefined comparison strategy:
-group_mapping = _define_group_comparison(group_comparison)
+group_mapping = define_group_comparison(group_comparison)
 
 
 # --- Choose subjects depending on experimental part and exclude subjects who participated in both parts:
-selected_subs = _get_selected_subject_list(part, subs, subjects_to_exclude)
+selected_subs = get_selected_subject_list(part, subs, subjects_to_exclude)
 
 
 # --- Loop over seeds
 for seed in seeds:
-    print(f"=== Running seed: {seed} ===")
-
-    # --- Get all directories and participants.tsv:
-    # path to halfpipe derivatives directory
-    base_dir = _get_data_path(feature, seed)
-
-    # get derivatives path
-    deriv_dir = _get_derivatives_path(feature, seed)
+    print(f"\n=== Running seed: {seed} ===")
 
     # get output path
-    output_dir = _get_output_path(part, feature, seed)
+    output_dir = get_output_path(part, feature, seed)
     output_dir = os.path.join(output_dir, "pre_post_diff")
     os.makedirs(output_dir, exist_ok=True)
 
@@ -101,8 +97,8 @@ for seed in seeds:
         run_imgs = {}
         run_masks = {}
         for run in runs:
-            filename = _get_full_filename(subject_id, task, run, feature, seed)
-            img_path = os.path.join(deriv_dir, subject_id, "func", f"task-{task}", filename)
+            filename = get_full_filename(subject_id, task, run, feature, seed)
+            img_path = os.path.join(deriv_dir, subject_id, filename)
             if not os.path.exists(img_path):
                 print(f"Missing file: {img_path}")
                 continue
@@ -115,8 +111,8 @@ for seed in seeds:
 
             # load subject masks only if subject-based mask strategy is used
             if mask_strategy == "subject_based":
-                mask_filename = _get_mask_filename(subject_id, task, run, feature, seed)
-                mask_path = os.path.join(deriv_dir, subject_id, "func", f"task-{task}", mask_filename)
+                mask_filename = get_mask_filename(subject_id, task, run, feature, seed)
+                mask_path = os.path.join(deriv_dir, subject_id, mask_filename)
                 if not os.path.exists(mask_path):
                     print(f"Missing mask: {mask_path}")
                     continue
@@ -178,7 +174,7 @@ for seed in seeds:
     elif mask_strategy == "predefined":
         if predefined_mask is None:
             raise ValueError("No predefined mask was loaded.")
-        analysis_mask = _get_mask_file(predefined_mask)
+        analysis_mask = get_mask_file(predefined_mask)
     else:
         raise ValueError(f"Unknown mask strategy {mask_strategy}")
 
@@ -214,9 +210,9 @@ for seed in seeds:
     thr1_data = thresholded_map1.get_fdata()
     # plot thresholded maps if there are any voxels/clusters left
     if np.any(thr1_data != 0):
-        plot_stat_map(thresholded_map1, display_mode='mosaic', cmap="RdBu_r",
-                      title=f"difference z map (post - pre) \n {base_title}; z > 3.09; clusters > 10 voxels")
-        plt.show()
+        # plot_stat_map(thresholded_map1, display_mode='mosaic', cmap="RdBu_r",
+        # title=f"difference z map (post - pre) \n {base_title}; z > 3.09; clusters > 10 voxels")
+        # plt.show()
         fig = plt.figure(figsize=(9,5))
         display = plot_glass_brain(thresholded_map1, cmap="RdBu_r",
                                    figure=fig, title=None, plot_abs=False, symmetric_cbar=True)
@@ -228,7 +224,7 @@ for seed in seeds:
     # get cluster table with anatomical labels
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        cluster_table1 = _get_cluster_table_with_aal_labels(
+        cluster_table1 = get_cluster_table_with_aal_labels(
             stat_img=thresholded_map1,
             stat_threshold=3.09,
             cluster_threshold=10,
@@ -267,97 +263,114 @@ for seed in seeds:
             z=sign_z_map
         )
 
-    # plot cluster-mass corrected map
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        data = signed_logp_mass_thr.get_fdata()
-        visible = np.abs(data[data != 0])
-        if len(visible) > 0:
+    # check if there are any significant clusters
+    data = signed_logp_mass_thr.get_fdata()
+    has_sig_clusters = np.any(np.abs(data) > neglog_alpha_05)
+
+    if not has_sig_clusters:
+        print("No clusters survive permutation cluster-mass FWER correction.")
+    else:
+        # plot cluster-mass corrected map
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+
+            visible = np.abs(data[data != 0])
             vmax = np.ceil(np.max(visible) * 10) / 10
+
             fig = plt.figure(figsize=(9, 5))
             display = plot_glass_brain(signed_logp_mass_thr, cmap="RdBu_r", vmax=vmax, threshold=neglog_alpha_05,
                                        plot_abs=False, symmetric_cbar=True, figure=fig, title=None, colorbar=True) #
-            display.frame_axes.figure.suptitle(f"difference map permutation test cluster-mass FWER\n {base_title} | corrected p < .05")
+            display.frame_axes.figure.suptitle(f"difference map permutation test cluster-mass FWER\n"
+                                               f" {base_title} | corrected p < .05")
             display.savefig(os.path.join(output_dir, "04_nonparametric", f"{file_suffix}_perm_clustermass_fwer05.png"))
+
+
+        # --- Get cluster table with aal brain atlas
+        logp_mass_thr_float = math_img("img.astype(float)", img=signed_logp_mass_thr)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            cluster_table_perm_mass, label_maps = get_cluster_table_with_aal_labels(
+                stat_img=logp_mass_thr_float,
+                stat_threshold=neglog_alpha_05,
+                cluster_threshold=0,
+                two_sided=True,
+                return_label_maps=True
+            )
+        if cluster_table_perm_mass.empty:
+            print("Cluster table is empty despite significant voxels. Skipping saves.")
         else:
-            print("No clusters survive permutation cluster-mass FWER correction.")
+            label_maps = label_maps[0]
+            print(f"Found {len(label_maps)} label map(s)")
+            # convert peak stat value (-log10(p)) back to real p-value (10^(-p))
+            cluster_p_values = 10 ** (-abs(cluster_table_perm_mass["Peak Stat"]))
+            # insert p-value column after Peak Stat
+            peak_stat_idx = cluster_table_perm_mass.columns.get_loc("Peak Stat") + 1
+            cluster_table_perm_mass.insert(peak_stat_idx, "p-value", cluster_p_values)
+            cluster_table_perm_mass = cluster_table_perm_mass.rename(columns={
+                "Cluster ID": "Cluster",
+                "Peak Stat": "Stat",
+                "Cluster Size (mm3)": "Size (mm3)",
+            })
+
+            # save cluster table
+            cluster_table_dir = os.path.join(output_dir, "cluster_tables")
+            os.makedirs(cluster_table_dir, exist_ok=True)
+            cluster_table_path = os.path.join(cluster_table_dir, f"{file_suffix}_cluster_table_perm_mass.csv")
+            cluster_table_perm_mass.to_csv(cluster_table_path, index=False)
 
 
-    # --- Get cluster table with aal brain atlas
-    logp_mass_thr_float = math_img("img.astype(float)", img=signed_logp_mass_thr)
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        cluster_table_perm_mass, label_maps = _get_cluster_table_with_aal_labels(
-            stat_img=logp_mass_thr_float,
-            stat_threshold=neglog_alpha_05,
-            cluster_threshold=0,
-            two_sided=True,
-            return_label_maps=True
-        )
-    label_maps = label_maps[0]
-    print(f"Found {len(label_maps)} label map(s)")
-    # convert peak stat value (-log10(p)) back to real p-value (10^(-p))
-    cluster_p_values = 10 ** (-abs(cluster_table_perm_mass["Peak Stat"]))
-    # insert p-value column after Peak Stat
-    peak_stat_idx = cluster_table_perm_mass.columns.get_loc("Peak Stat") + 1
-    cluster_table_perm_mass.insert(peak_stat_idx, "p-value", cluster_p_values)
-    cluster_table_perm_mass = cluster_table_perm_mass.rename(columns={
-        "Cluster ID": "Cluster",
-        "Peak Stat": "Stat",
-        "Cluster Size (mm3)": "Size (mm3)",
-    })
+            # --- Save significant cluster masks for post-hoc extraction
+            posthoc_mask_dir = os.path.join(output_dir, "sig_cluster_masks")
+            os.makedirs(posthoc_mask_dir, exist_ok=True)
 
-    # save cluster table
-    cluster_table_dir = os.path.join(output_dir, "cluster_tables")
-    os.makedirs(cluster_table_dir, exist_ok=True)
-    cluster_table_path = os.path.join(cluster_table_dir, f"{file_suffix}_cluster_table_perm_mass.csv")
-    cluster_table_perm_mass.to_csv(cluster_table_path, index=False)
+            os.makedirs(os.path.join(posthoc_mask_dir, "positive"), exist_ok=True)
+            os.makedirs(os.path.join(posthoc_mask_dir, "negative"), exist_ok=True)
+            os.makedirs(os.path.join(posthoc_mask_dir, "signed"), exist_ok=True)
 
+            for i, lm in enumerate(label_maps):
+                lm_data = lm.get_fdata()
+                # determine direction from signed map
+                signed_vals = signed_logp_mass_thr.get_fdata()[lm_data > 0]
+                if np.nanmean(signed_vals) > 0:
+                    direction = "positive"
+                else:
+                    direction = "negative"
+                lm_path = os.path.join(posthoc_mask_dir, direction, f"{file_suffix}_{direction}_cluster_id_map.nii.gz")
+                lm.to_filename(lm_path)
+                print(f"Saved {direction} cluster map.")
 
-    # --- Save significant cluster masks for post-hoc extraction
-    posthoc_mask_dir = os.path.join(output_dir, "sig_cluster_masks")
-    os.makedirs(posthoc_mask_dir, exist_ok=True)
+            # OLD MASKS
+            # full signed corrected map
+            signed_logp_mass_path = os.path.join(posthoc_mask_dir, "signed", f"{file_suffix}_signed_logp_clustermass_fwer05.nii.gz")
+            signed_logp_mass_thr.to_filename(signed_logp_mass_path)
 
-    for i, lm in enumerate(label_maps):
-        data = lm.get_fdata()
-        # determine direction from signed map
-        signed_vals = signed_logp_mass_thr.get_fdata()[data > 0]
-        if np.nanmean(signed_vals) > 0:
-            direction = "positive"
-        else:
-            direction = "negative"
-        lm_path = os.path.join(posthoc_mask_dir, direction, f"{file_suffix}_{direction}_cluster_id_map.nii.gz")
-        lm.to_filename(lm_path)
-        print(f"Saved {direction} cluster map.")
+            # positive: (post-pre)patient > (post-pre)control
+            pos_sig_mask = math_img(f"(img > {neglog_alpha_05}).astype(float)", img=signed_logp_mass_thr)
+            pos_mask_path = os.path.join(posthoc_mask_dir, "positive", f"{file_suffix}_positive_clusters_mask.nii.gz")
+            if np.any(pos_sig_mask.get_fdata() != 0):
+                pos_sig_mask.to_filename(pos_mask_path)
+                print("Saved positive cluster mask.")
+            else:
+                print("No positive significant clusters.")
 
-    # OLD MASKS
-    # full signed corrected map
-    signed_logp_mass_path = os.path.join(posthoc_mask_dir, "signed", f"{file_suffix}_signed_logp_clustermass_fwer05.nii.gz")
-    signed_logp_mass_thr.to_filename(signed_logp_mass_path)
+            # negative: (post-pre)control > (post-pre)patient
+            neg_sig_mask = math_img(f"(img < -{neglog_alpha_05}).astype(float)", img=signed_logp_mass_thr)
+            neg_mask_path = os.path.join(posthoc_mask_dir, "negative", f"{file_suffix}_negative_clusters_mask.nii.gz")
+            if np.any(neg_sig_mask.get_fdata() != 0):
+                neg_sig_mask.to_filename(neg_mask_path)
+                print("Saved negative cluster mask.")
+            else:
+                print("No negative significant clusters.")
 
-    # positive: (post-pre)patient > (post-pre)control
-    pos_sig_mask = math_img(f"(img > {neglog_alpha_05}).astype(float)", img=signed_logp_mass_thr)
-    pos_mask_path = os.path.join(posthoc_mask_dir, "positive", f"{file_suffix}_positive_clusters_mask.nii.gz")
-    if np.any(pos_sig_mask.get_fdata() != 0):
-        pos_sig_mask.to_filename(pos_mask_path)
-        print("Saved positive cluster mask.")
-    else:
-        print("No positive significant clusters.")
-
-    # negative: (post-pre)control > (post-pre)patient
-    neg_sig_mask = math_img(f"(img < -{neglog_alpha_05}).astype(float)", img=signed_logp_mass_thr)
-    neg_mask_path = os.path.join(posthoc_mask_dir, "negative", f"{file_suffix}_negative_clusters_mask.nii.gz")
-    if np.any(neg_sig_mask.get_fdata() != 0):
-        neg_sig_mask.to_filename(neg_mask_path)
-        print("Saved negative cluster mask.")
-    else:
-        print("No negative significant clusters.")
 
 
     # --- Clean up memory after each seed
     # plt.close("all")
-    del (base_dir, deriv_dir, output_dir, diff_imgs, included_rows, sub_mask_imgs, included_df, analysis_mask, design_df,
-         second_level_design, second_level_model, z_map, thresholded_map1, thr1_data, cluster_table1, perm_out,
-         sign_z_map, signed_logp_mass_thr, data, logp_mass_thr_float, cluster_table_perm_mass, label_maps,
-         cluster_p_values, pos_sig_mask, neg_sig_mask)
+    vars_to_delete = ["diff_imgs", "included_rows", "sub_mask_imgs", "analysis_mask", "second_level_design",
+                      "second_level_model", "z_map", "thresholded_map1", "thr1_data", "cluster_table1", "perm_out",
+                      "sign_z_map", "signed_logp_mass_thr", "data", "logp_mass_thr_float", "cluster_table_perm_mass",
+                      "label_maps", "cluster_p_values", "pos_sig_mask", "neg_sig_mask"]
+    for var in vars_to_delete:
+        if var in locals():
+            del locals()[var]
     gc.collect()
