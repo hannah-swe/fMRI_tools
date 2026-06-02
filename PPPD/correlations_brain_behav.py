@@ -2,7 +2,7 @@ import matplotlib
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 import os
-from PPPD import (_get_participants_tsv, _get_selected_subject_list, get_main_values_tables_path, get_connectivity_path)
+from PPPD import (get_participants_tsv, get_selected_subject_list, get_main_values_tables_path, get_connectivity_path)
 from PPPD.subjects import subs, subjects_to_exclude
 import numpy as np
 import pandas as pd
@@ -54,7 +54,8 @@ def run_corr(df, brain_var, behavior_var, min_n=3):
     }
 
 
-def plot_corr_heatmap(results_df, group):
+def plot_corr_heatmap(results_df, group, corr_plot_path):
+    corr_plot_dir = os.path.join(corr_plot_path, f"correlation_matrix_{group}")
     df_g = results_df[results_df["group"] == group].copy()
     rho_df = df_g.pivot(index="behavior", columns="brain", values="rho")
     p_df = df_g.pivot(index="behavior", columns="brain", values="p")
@@ -102,13 +103,15 @@ def plot_corr_heatmap(results_df, group):
     plt.xticks(rotation=45, ha="right")
     plt.yticks(rotation=0)
     plt.tight_layout()
+    plt.savefig(corr_plot_dir, dpi=300, bbox_inches="tight")
     plt.show()
 
     return rho_df, p_df
 
 
 # Function to set up plots
-def plot_corr_from_results(brain_var, behavior_var, results_df):
+def plot_corr_from_results(brain_var, behavior_var, results_df, corr_plot_path):
+    corr_plot_dir = os.path.join(corr_plot_path, f"correlation_{brain_var}_{behavior_var}")
     # get raw data for scatterplot
     data_pat = df_pat[[brain_var, behavior_var]].copy()
     data_pat["group"] = "patient"
@@ -160,11 +163,11 @@ def plot_corr_from_results(brain_var, behavior_var, results_df):
             )
         stats_text.append(f"{group}: ρ = {rho:.2f}, p = {p:.3f}")
     ax.set_title(
-        f"{brain_var} vs {behavior_var}\n"
-        + "\n".join(stats_text)
+        f"\n".join(stats_text)
     )
     sns.despine()
     plt.tight_layout()
+    plt.savefig(corr_plot_dir, dpi=300, bbox_inches="tight")
     plt.show()
 
 
@@ -190,12 +193,12 @@ direction = "negative" # possible directions for pre-post differences:
 
 
 # --- Load participants.tsv
-participants_df = _get_participants_tsv()
+participants_df = get_participants_tsv()
 participants_df["subject_id"] = participants_df["participant_id"].apply(lambda x: f"sub-{x:03d}")
 
 
 # --- Choose subjects depending on experimental part and exclude subjects who participated in both parts:
-selected_subs = _get_selected_subject_list(part, subs, subjects_to_exclude)
+selected_subs = get_selected_subject_list(part, subs, subjects_to_exclude)
 
 
 # --- Get connectivity dataframe with subject values for all significant cluster per seed
@@ -206,6 +209,8 @@ connectivity_df = pd.read_csv(connectivity_df_path)
 # --- Load full main values table for questionnaire, behavioral and posturography data
 main_df_path = os.path.join(get_main_values_tables_path(), "full_dataframe.csv")
 main_df = pd.read_csv(main_df_path)
+
+corr_plot_path = ("/data_wgs04/ag-sensomotorik/PPPD/analysis/group_level/brain_behav_corr/")
 
 
 # --- Merge connectivity and main values dataframe
@@ -238,13 +243,14 @@ df_con = df_full[df_full["group"] == "control"]
 
 # --- Define all correlation analyses
 brain_vars = [
-    "IPLPFcmL_cluster-01_Vermis_8_median",
-    "InsulaOP3RAnat_cluster-01_Cerebellum_Crus2_L_median",
-    "OperculumOP1L_cluster-01_Vermis_8_median",
-    "OperculumOP1R_cluster-01_Vermis_8_median",
-    "V1R_cluster-01_Cerebellum_9_R_median",
-    "V2R_cluster-01_Vermis_9_median",
-    "V5L_cluster-01_Cerebellum_6_R_median"
+    "IPLPFcmL--Vermis_8_mean",
+    "InsulaIg2L--Lingual_L_median",
+    "InsulaIg2L--SupraMarginal_L_median",
+    "InsulaOP3RAnat--Cerebellum_Crus2_L_median",
+    "OperculumOP1L--Vermis_8_median",
+    "OperculumOP1R--Vermis_9_median",
+    "V5L--Cerebellum_6_R_median",
+    "V5R--Cerebellum_Crus1_L_median"
 ]
 
 behavior_vars = [
@@ -289,13 +295,14 @@ results_df = pd.DataFrame(results)
 
 # --- New labels for all variables
 brain_labels = {
-    "IPLPFcmL_cluster-01_Vermis_8_median": "IPL–Verm",
-    "InsulaOP3RAnat_cluster-01_Cerebellum_Crus2_L_median": "OP3–Crus2",
-    "OperculumOP1L_cluster-01_Vermis_8_median": "OP1–Verm",
-    "OperculumOP1R_cluster-01_Vermis_8_median": "OP1–Verm",
-    "V1R_cluster-01_Cerebellum_9_R_median": "V1–Cb9",
-    "V2R_cluster-01_Vermis_9_median": "V2–Verm",
-    "V5L_cluster-01_Cerebellum_6_R_median": "V5–Cb6",
+    "IPLPFcmL--Vermis_8_median": "IPL–Verm",
+    "InsulaIg2L--Lingual_L_median": "Ig2-Ling",
+    "InsulaIg2L--SupraMarginal_L_median": "Ig2-Sup",
+    "InsulaOP3RAnat--Cerebellum_Crus2_L_median": "OP3–Crus2",
+    "OperculumOP1L--Vermis_8_median": "OP1L–Verm",
+    "OperculumOP1R--Vermis_9_median": "OP1R–Verm",
+    "V5L--Cerebellum_6_R_median": "V5L–Crus1",
+    "V5R--Cerebellum_Crus1_L_median": "V5R-Crus1"
 }
 behavior_labels = {
     "age": "Age",
@@ -312,8 +319,8 @@ behavior_labels = {
 
 
 # --- Plot heatmap with all correlations
-rho_pat, p_pat = plot_corr_heatmap(results_df, "patient")
-rho_con, p_con = plot_corr_heatmap(results_df, "control")
+rho_pat, p_pat = plot_corr_heatmap(results_df, "patient", corr_plot_path)
+rho_con, p_con = plot_corr_heatmap(results_df, "control", corr_plot_path)
 
 
 # --- Plot correlation p < 0.1
@@ -327,5 +334,6 @@ for _, row in sig_pairs.iterrows():
     plot_corr_from_results(
         row["brain"],
         row["behavior"],
-        results_df
+        results_df,
+        corr_plot_path,
     )
