@@ -7,6 +7,8 @@ from PPPD import (get_derivatives_path, get_participants_tsv, get_full_filename,
                   get_output_path, define_group_comparison, get_selected_subject_list, get_mask_file)
 from PPPD.subjects import subs, subjects_to_exclude
 from PPPD.utils import get_cluster_table_with_aal_labels
+from PPPD.config import load_config
+from PPPD.plotting import get_colorbar_limits
 from nilearn.glm.second_level import SecondLevelModel, non_parametric_inference
 from nilearn.image import threshold_img, math_img
 from nilearn.plotting import plot_stat_map, plot_design_matrix, plot_glass_brain
@@ -17,28 +19,32 @@ import warnings
 import gc
 
 
-# --- Script configuration:
-task = "rest"
-runs = ["run-01", "run-02"] # pre, post
-part = None # supported: None, 1, 2 (None: all subjects; part 1: subjects < 100; part 2: subjects >= 100)
-feature = "seed_based" # supported features: "falff", "seed_based", "alff"
-seeds = ["IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR"] # List of supported seeds:
+# ---- Load script configuration from config.yml
+config = load_config()
+
+task = config["analysis"]["task"]
+runs = config["analysis"]["runs"] # "run-01" == pre, "run-02" == post
+part = config["analysis"]["part"] # supported: None, 1, 2 (None: all subjects; 1: subjects < 100; 2: subjects >= 100)
+feature = config["analysis"]["feature"] # supported features: "falff", "seed_based", "alff"
+seeds = config["analysis"]["seeds"] # List of supported seeds:
                                     # "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
                                     # "InsulaOP3RAnat", "InsulaOP3Sphere",
                                     # "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",
-                                    # "OperculumOP1L", "OperculumOP1R", "OperculumOP2L", "OperculumOP2R", "OperculumOP4L", "OperculumOP4R",
-                                    # "Precuneus",
+                                    # "OperculumOP1L", "OperculumOP1R", "OperculumOP2L", "OperculumOP2R",
+                                    # "OperculumOP4L", "OperculumOP4R", "Precuneus",
                                     # "CSv", "CSvR",
                                     # "V1L", "V1R", "V2L", "V2R", "V5L", "V5R", "V6L", "V6R",
                                     # "VermisUvulaL", "VermisVII"
-                        # for feature = "falff" or "alff" do seed = None
-group_comparison = "pat>HC" # supported comparisons: "pat>HC", "HC>pat"
-# mask settings
-mask_strategy = "subject_based" # supported strategies: "subject_based", "predefined"
-predefined_mask = "vvn" # supported masks: "dmn", "vvn"
-threshold_mask = 0.8 # only used if mask_strategy == "subject_based"
-# number of permutations for non-parametric cluster-based permutation test
-n_perm = 10000
+group_comparison = config["analysis"]["group_comparison"] # supported comparisons: "pat>HC", "HC>pat"
+mask_strategy = config["mask"]["strategy"] # supported strategies: "subject_based", "predefined"
+predefined_mask = config["mask"]["predefined_mask"]
+threshold_mask = config["mask"]["threshold"] # only used if mask_strategy == "subject_based"
+n_perm = config["statistics"]["n_perm"] # number of permutations for non-parametric cluster-based permutation test
+
+
+print(f"Used configuration parameters:\n"
+      f"task = {task}\nruns = {runs}\npart = {part}\nfeature = {feature}\nseeds = {seeds}\n"
+      f"group_comparison = {group_comparison}\nmask_strategy = {mask_strategy}\nn_perm = {n_perm}\n")
 
 
 # --- Load participants.tsv
@@ -206,17 +212,20 @@ for seed in seeds:
     # Significance test:
     # Version 1: abs(z) > 3.09 (equivalent to p < 0.001 one-sided test), cluster size > 10 voxels
     # z(threshold)=3.09 for p=0.001 when testing one-sided; 3.29 for two-sided
-    thresholded_map1 = threshold_img(z_map, cluster_threshold=10, threshold=3.09, two_sided=True)
+    z_threshold_p001 = 3.09
+    thresholded_map1 = threshold_img(z_map, cluster_threshold=10, threshold=z_threshold_p001, two_sided=True)
     thr1_data = thresholded_map1.get_fdata()
     # plot thresholded maps if there are any voxels/clusters left
     if np.any(thr1_data != 0):
+        vmin, vmax = get_colorbar_limits(data=thr1_data, threshold=z_threshold_p001, two_sided=True)
         # plot_stat_map(thresholded_map1, display_mode='mosaic', cmap="RdBu_r",
         # title=f"difference z map (post - pre) \n {base_title}; z > 3.09; clusters > 10 voxels")
         # plt.show()
         fig = plt.figure(figsize=(9,5))
-        display = plot_glass_brain(thresholded_map1, cmap="RdBu_r",
+        display = plot_glass_brain(thresholded_map1, cmap="RdBu_r", threshold=z_threshold_p001, vmin=vmin, vmax=vmax,
                                    figure=fig, title=None, plot_abs=False, symmetric_cbar=True)
-        display.frame_axes.figure.suptitle(f"difference z map (post - pre) \n {base_title}; z > 3.09; clusters > 10 voxels")
+        display.frame_axes.figure.suptitle(f"difference z map (post - pre) \n {base_title}; "
+                                           f"|z| > {z_threshold_p001}; clusters > 10 voxels")
         display.savefig(os.path.join(output_dir, "01_uncorrected", f"{file_suffix}_uncorrected_p001_cluster10.png"))
     else:
         print("No suprathreshold clusters; skipping plots.")
@@ -274,12 +283,12 @@ for seed in seeds:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
 
-            visible = np.abs(data[data != 0])
-            vmax = np.ceil(np.max(visible) * 10) / 10
+            vmin, vmax = get_colorbar_limits(data=data, threshold=neglog_alpha_05, two_sided=True)
 
             fig = plt.figure(figsize=(9, 5))
-            display = plot_glass_brain(signed_logp_mass_thr, cmap="RdBu_r", vmax=vmax, threshold=neglog_alpha_05,
-                                       plot_abs=False, symmetric_cbar=True, figure=fig, title=None, colorbar=True) #
+            display = plot_glass_brain(signed_logp_mass_thr, cmap="RdBu_r", threshold=neglog_alpha_05, vmin=vmin,
+                                       vmax=vmax, plot_abs=False, symmetric_cbar=True, figure=fig,
+                                       title=None, colorbar=True)
             display.frame_axes.figure.suptitle(f"difference map permutation test cluster-mass FWER\n"
                                                f" {base_title} | corrected p < .05")
             display.savefig(os.path.join(output_dir, "04_nonparametric", f"{file_suffix}_perm_clustermass_fwer05.png"))
