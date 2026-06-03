@@ -217,6 +217,7 @@ for seed in seeds:
     thr1_data = thresholded_map1.get_fdata()
     # plot thresholded maps if there are any voxels/clusters left
     if np.any(thr1_data != 0):
+        # get colorbar thresholds
         vmin, vmax = get_colorbar_limits(data=thr1_data, threshold=z_threshold_p001, two_sided=True)
         # plot_stat_map(thresholded_map1, display_mode='mosaic', cmap="RdBu_r",
         # title=f"difference z map (post - pre) \n {base_title}; z > 3.09; clusters > 10 voxels")
