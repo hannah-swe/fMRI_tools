@@ -210,7 +210,7 @@ connectivity_df = pd.read_csv(connectivity_df_path)
 main_df_path = os.path.join(get_main_values_tables_path(), "full_dataframe.csv")
 main_df = pd.read_csv(main_df_path)
 
-corr_plot_path = ("/data_wgs04/ag-sensomotorik/PPPD/analysis/group_level/brain_behav_corr/")
+corr_plot_path = os.path.join(get_connectivity_path(), "brain_behav_corr")
 
 
 # --- Merge connectivity and main values dataframe
@@ -243,7 +243,7 @@ df_con = df_full[df_full["group"] == "control"]
 
 # --- Define all correlation analyses
 brain_vars = [
-    "IPLPFcmL--Vermis_8_mean",
+    "IPLPFcmL--Vermis_8_median",
     "InsulaIg2L--Lingual_L_median",
     "InsulaIg2L--SupraMarginal_L_median",
     "InsulaOP3RAnat--Cerebellum_Crus2_L_median",
