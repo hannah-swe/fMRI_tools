@@ -3,9 +3,8 @@ matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 import os
 import nibabel as nib
-from PPPD import (_get_data_path, _get_derivatives_path, _get_participants_tsv, _get_full_filename, _get_output_path,
-                  _get_selected_subject_list, _get_posthoc_cluster_mask, _get_signed_posthoc_map,
-                  _get_cluster_table_with_aal_labels)
+from PPPD import (get_derivatives_path, get_participants_tsv, get_full_filename, get_output_path,
+                  get_selected_subject_list, get_posthoc_cluster_mask)
 from PPPD.subjects import subs, subjects_to_exclude
 from nilearn.masking import apply_mask
 import numpy as np
@@ -24,23 +23,20 @@ def get_dataframe_for_connectivity_values(
     part=None,
     direction=None,
 ):
+    # get derivatives path
+    deriv_dir = get_derivatives_path(feature)
+
     all_rows = []
 
     for seed in seeds:
         print(f"\n === Running seed: {seed} ===")
 
         # --- Get all directories:
-        # path to halfpipe derivatives directory
-        base_dir = _get_data_path(feature, seed)
-
-        # get derivatives path
-        deriv_dir = _get_derivatives_path(feature, seed)
-
         # get output path
-        output_dir = _get_output_path(part, feature, seed)
+        output_dir = get_output_path(part, feature, seed)
 
         # get sig cluster mask directory and load mask
-        mask_path = _get_posthoc_cluster_mask(
+        mask_path = get_posthoc_cluster_mask(
             feature=feature,
             group_comparison=group_comparison,
             pre_post_diff=pre_post_diff,
@@ -69,12 +65,12 @@ def get_dataframe_for_connectivity_values(
 
         # --- Load original permutation cluster table
         if feature == "seed_based":
-            table_file_suffix = f"{feature}_{seed}_{group_comparison}"
+            table_file_suffix = f"{feature}_{seed}_{group_comparison}_{part_label}"
         else:
             table_file_suffix = f"{feature}_{group_comparison}"
         # part_label = "all" if part is None else f"{part}"
         # table_file_suffix = f"{table_file_suffix}_{part_label}"
-        cluster_table_path = os.path.join(output_dir, "cluster_tables", f"{table_file_suffix}_submask-0.8_cluster_table_perm_mass.csv")
+        cluster_table_path = os.path.join(output_dir, "cluster_tables", f"{table_file_suffix}_twosided_cluster_table_perm_mass.csv")
         cluster_table_perm_mass = pd.read_csv(cluster_table_path)
 
         print("seed:", seed)
@@ -98,8 +94,8 @@ def get_dataframe_for_connectivity_values(
             subject_id = f"sub-{s:03d}"
 
             # load statistical nifti maps
-            filename = _get_full_filename(subject_id, task, run, feature, seed)
-            img = os.path.join(deriv_dir, subject_id, "func", f"task-{task}", filename)
+            filename = get_full_filename(subject_id, task, run, feature, seed)
+            img = os.path.join(deriv_dir, subject_id, filename)
             if not os.path.exists(img):
                 print(f"Missing file: {img}")
                 continue
@@ -238,7 +234,7 @@ task = "rest"
 run = "run-01" # "run-01" == pre, "run-02" == post
 part = None # supported: None, 1, 2 (None: all subjects; part 1: subjects < 100; part 2: subjects >= 100)
 feature = "seed_based" # supported features: "falff", "seed_based", "alff"
-seeds = ["InsulaOP3RAnat", "IPLPFcmL", "OperculumOP1L", "OperculumOP1R", "OperculumOP4L", "V1R", "V2R", "V5L"]
+seeds = ["InsulaIg2L", "InsulaOP3RAnat", "IPLPFcmL", "IPLPFcmR", "OperculumOP1L", "OperculumOP1R", "OperculumOP4L", "V5L", "V5R"]
                                     # List of supported seeds:
                                     # "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
                                     # "InsulaOP3RAnat", "InsulaOP3Sphere",
@@ -266,12 +262,12 @@ filename_wide = f"connectivity_{file_suffix}dataframe_wide_format.csv"
 
 
 # --- Load participants.tsv
-participants_df = _get_participants_tsv()
+participants_df = get_participants_tsv()
 participants_df["subject_id"] = participants_df["participant_id"].apply(lambda x: f"sub-{x:03d}")
 
 
 # --- Choose subjects depending on experimental part and exclude subjects who participated in both parts:
-selected_subs = _get_selected_subject_list(part, subs, subjects_to_exclude)
+selected_subs = get_selected_subject_list(part, subs, subjects_to_exclude)
 
 
 # --- Get connectivity dataframe with subject values for all significant cluster per seed
@@ -283,9 +279,7 @@ df = get_dataframe_for_connectivity_values(seeds, feature, group_comparison, pre
 # make a unique cluster label for column names
 df["cluster_label"] = (
     df["seed"].astype(str)
-    + "_cluster-"
-    + df["cluster"].astype(str).str.zfill(2)
-    + "_"
+    + "--"
     + df["aal_label"].astype(str)
 )
 
