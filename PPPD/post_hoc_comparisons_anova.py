@@ -3,10 +3,10 @@ matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 import os
 import nibabel as nib
-from PPPD import (_get_data_path, _get_derivatives_path, _get_participants_tsv, _get_full_filename, _get_output_path,
-                  _get_selected_subject_list, _get_posthoc_cluster_mask, _get_signed_posthoc_map,
-                  _get_cluster_table_with_aal_labels)
+from PPPD import (get_derivatives_path, get_participants_tsv, get_full_filename, get_output_path,
+                  get_selected_subject_list, get_posthoc_cluster_mask)
 from PPPD.subjects import subs, subjects_to_exclude
+from PPPD.utils import get_cluster_table_with_aal_labels
 from nilearn.masking import apply_mask
 import numpy as np
 import pandas as pd
@@ -37,17 +37,14 @@ palette = {"control": "teal", "patient": "hotpink"}
 
 # --- Get all directories and participants.tsv:
 # path to halfpipe derivatives directory
-base_dir = _get_data_path(feature, seed)
+deriv_dir = get_derivatives_path(feature)
 
 # read participants.tsv
-participants_df = _get_participants_tsv()
+participants_df = get_participants_tsv()
 participants_df["subject_id"] = participants_df["participant_id"].apply(lambda x: f"sub-{x:03d}")
 
-# get derivatives path
-deriv_dir = _get_derivatives_path(feature, seed)
-
 # get output path
-output_dir = _get_output_path(part, feature, seed)
+output_dir = get_output_path(part, feature, seed)
 output_dir = os.path.join(output_dir, "pre_post_diff")
 os.makedirs(output_dir, exist_ok=True)
 
@@ -69,13 +66,13 @@ file_suffix = f"{file_suffix}_{part_label}_{direction}"
 
 
 # --- Choose subjects depending on experimental part and exclude subjects who participated in both parts:
-selected_subs = _get_selected_subject_list(part, subs, subjects_to_exclude)
+selected_subs = get_selected_subject_list(part, subs, subjects_to_exclude)
 
 
 # --- Load data:
 # initialize lists for derivatives, subject ids and mask images
 included_rows = []
-mask_path = _get_posthoc_cluster_mask(feature=feature, seed=seed, group_comparison=group_comparison, part=part,
+mask_path = get_posthoc_cluster_mask(feature=feature, seed=seed, group_comparison=group_comparison, part=part,
                                       direction=direction)
 for s in selected_subs:
     # get full subject id
@@ -84,8 +81,8 @@ for s in selected_subs:
     # load statistical nifti images of both runs
     run_imgs = {}
     for run in runs:
-        filename = _get_full_filename(subject_id, task, run, feature, seed)
-        img_path = os.path.join(deriv_dir, subject_id, "func", f"task-{task}", filename)
+        filename = get_full_filename(subject_id, task, run, feature, seed)
+        img_path = os.path.join(deriv_dir, subject_id, filename)
         if not os.path.exists(img_path):
             print(f"Missing file: {img_path}")
             continue
@@ -208,7 +205,7 @@ for cluster_id in cluster_ids:
 
     # Get AAL label
     try:
-        cluster_table = _get_cluster_table_with_aal_labels(
+        cluster_table = get_cluster_table_with_aal_labels(
             stat_img=single_cluster_img,
             stat_threshold=0.5,
             cluster_threshold=0,
