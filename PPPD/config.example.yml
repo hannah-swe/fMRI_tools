@@ -1,9 +1,0 @@
-# Path to folder with all HALFpipe working directories
-analysis_path: /data_wgs04/ag-sensomotorik/PPPD/analysis/
-output_path: /data_wgs04/ag-sensomotorik/PPPD/analysis/YOUR_OUTPUT_FOLDER
-mask_path: /data_wgs04/ag-sensomotorik/PPPD/masks/
-aal_path: /data_wgs04/ag-sensomotorik/Python_analysis/nilearn_data/aal_3v2/
-suit_path: /data_wgs04/ag-sensomotorik/Python_analysis/cerebellar_atlases/Diedrichsen_2009/
-main_value_tables_path: //data_wgs04/ag-sensomotorik/PPPD/main_value_tables/
-posturography_path: /data_wgs04/ag-sensomotorik/PPPD/data/posturography/
-connectivity_path: /data_wgs04/ag-sensomotorik/PPPD/analysis/group_level/

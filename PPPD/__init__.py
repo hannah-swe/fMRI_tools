@@ -1,7 +1,7 @@
 import os
-import yaml
 import pandas as pd
 import nibabel as nib
+from .config import load_config
 
 
 SUPPORTED_TASKS = ["rest"]
@@ -20,16 +20,12 @@ SUPPORTED_MASKS = ["dmn", "vvn"]
 
 
 # Load config.yml
-PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
-config_file = os.path.join(PROJECT_DIR, "config.yml")
-with open(config_file, "r") as f:
-    config = yaml.safe_load(f)
-
-analysis_path = config["analysis_path"]
-output_path = config["output_path"]
-mask_path = config["mask_path"]
-aal_path = config["aal_path"]
-suit_path = config["suit_path"]
+config = load_config()
+analysis_path = config["paths"]["analysis_path"]
+output_path = config["paths"]["output_path"]
+mask_path = config["paths"]["mask_path"]
+aal_path = config["paths"]["aal_path"]
+suit_path = config["paths"]["suit_path"]
 
 
 # Gets the path for analysis folder based on the selected feature
@@ -243,15 +239,15 @@ def get_suit_atlas():
 
 
 def get_main_values_tables_path():
-    main_values_tables_path = config["main_values_tables_path"]
+    main_values_tables_path = config["paths"]["main_values_tables_path"]
     return main_values_tables_path
 
 
 def get_posturography_path():
-    posturography_path = config["posturography_path"]
+    posturography_path = config["paths"]["posturography_path"]
     return posturography_path
 
 
 def get_connectivity_path():
-    connectivity_path = config["connectivity_path"]
+    connectivity_path = config["paths"]["connectivity_path"]
     return connectivity_path

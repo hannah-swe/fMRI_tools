@@ -1,0 +1,84 @@
+# different absolute paths for analyses
+paths:
+  analysis_path: /data_wgs04/ag-sensomotorik/PPPD/analysis/
+  output_path: /data_wgs04/ag-sensomotorik/PPPD/analysis/YOUR_OUTPUT_FOLDER
+  mask_path: /data_wgs04/ag-sensomotorik/PPPD/masks/
+  aal_path: /data_wgs04/ag-sensomotorik/Python_analysis/nilearn_data/aal_3v2/
+  suit_path: /data_wgs04/ag-sensomotorik/Python_analysis/cerebellar_atlases/Diedrichsen_2009/
+  main_value_tables_path: //data_wgs04/ag-sensomotorik/PPPD/main_value_tables/
+  posturography_path: /data_wgs04/ag-sensomotorik/PPPD/data/posturography/
+  connectivity_path: /data_wgs04/ag-sensomotorik/PPPD/analysis/group_level/
+
+
+# Script configurations
+analysis:
+  task: "rest"
+
+  # runs: "run-01" == pre, "run-02" == post
+  runs:
+    - "run-01"
+    - "run-02"
+
+  # null, 1, 2 (null: all subjects; part 1: subjects < 100; part 2: subjects >= 100)
+  part: null
+
+  # supported features: "falff", "seed_based", "alff"
+  feature: "seed_based"
+
+  # full list of supported seeds; to exclude one: just put # before the -
+  seeds:
+    - "InsulaId1L"
+    - "InsulaId1R"
+    - "InsulaIg1L"
+    - "InsulaIg1R"
+    - "InsulaIg2L"
+    - "InsulaIg2R"
+    - "InsulaOP3RAnat"
+    - "InsulaOP3Sphere"
+    - "IPLPFcmL"
+    - "IPLPFcmR"
+    - "IPLPFL"
+    - "IPLPFR"
+    - "OperculumOP1L"
+    - "OperculumOP1R"
+    - "OperculumOP2L"
+    - "OperculumOP2R"
+    - "OperculumOP4L"
+    - "OperculumOP4R"
+    - "Precuneus"
+    - "CSv"
+    - "CSvR"
+    - "V1L"
+    - "V1R"
+    - "V2L"
+    - "V2R"
+    - "V5L"
+    - "V5R"
+    - "V6L"
+    - "V6R"
+    - "VermisUvulaL"
+    - "VermisVII"
+
+  # supported comparisons: "pat>HC", "HC>pat"
+  group_comparison: "pat>HC"
+
+
+# possibility to change used analysis mask strategy
+mask:
+  # supported strategies: "subject_based", "predefined"
+  strategy: "subject_based"
+
+  # supported masks: "dmn", "vvn"
+  predefined_mask: "vvn"
+
+  # only used if mask_strategy == "subject_based"
+  threshold: 0.8
+
+
+# parameters for statistical analyses
+statistics:
+  # number of permutations for cluster based permutation tests
+  n_perm: 10000
+
+  # possibilities to test the unpaired t-test: two_sided, one_sided
+  t_test_strategy: "two_sided"
