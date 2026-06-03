@@ -1,8 +1,9 @@
 import os
 import pandas as pd
 import numpy as np
-from PPPD import (get_main_values_tables_path, _get_selected_subject_list, get_posturography_path)
+from PPPD import (get_main_values_tables_path, get_selected_subject_list, get_posturography_path)
 from PPPD.subjects import subs, subjects_to_exclude
+
 
 part = None # needs to be None here to get th full table!
 output_path = os.path.join(get_main_values_tables_path(), "full_dataframe.csv")
@@ -21,7 +22,7 @@ neo2_df = pd.read_excel(table_path_2, sheet_name="NEO_Auswertung")
 
 
 # --- Choose subjects depending on experimental part and exclude subjects who participated in both parts:
-selected_subs = _get_selected_subject_list(part, subs, subjects_to_exclude)
+selected_subs = get_selected_subject_list(part, subs, subjects_to_exclude)
 
 
 # --- Change subjID in neo1_df
@@ -117,7 +118,7 @@ postu2_df = postu2_df[postu2_df["SubjID"].isin(selected_subs)]
 
 
 # --- Select columns to keep for posturography data
-columns_to_keep_postu1 = ["SubjID", "SwaySpeed.1.0.0"]
+columns_to_keep_postu1 = ["SubjID", "SwaySpeed.1.0.0", "RatingSway.1.0.0"]
 columns_to_keep_postu2 = ["SubjID", "EOfirm"]
 
 postu1_df = postu1_df[columns_to_keep_postu1]
