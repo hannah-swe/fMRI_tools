@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import SUITPy.flatmap as flatmap
 import nibabel as nib
 from nilearn.image import resample_to_img, math_img
-from PPPD import _get_output_path, _get_suit_atlas
+from PPPD import get_output_path, get_suit_atlas
 from scipy import ndimage
 
 
@@ -13,7 +13,7 @@ from scipy import ndimage
 task = "rest"
 part = None # supported: None, 1, 2 (None: all subjects; part 1: subjects < 100; part 2: subjects >= 100)
 feature = "seed_based" # supported features: "falff", "seed_based", "alff"
-seed = "IPLPFL" # List of supported seeds:
+seed = "V5R" # List of supported seeds:
                                     # "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
                                     # "InsulaOP3RAnat", "InsulaOP3Sphere",
                                     # "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",
@@ -23,14 +23,14 @@ seed = "IPLPFL" # List of supported seeds:
                                     # "V1L", "V1R", "V2L", "V2R", "V5L", "V5R", "V6L", "V6R",
                                     # "VermisUvulaL", "VermisVII"
 group_comparison = "pat>HC" # supported comparisons: "pat>HC", "HC>pat"
-pre_post_diff = True
+pre_post_diff = False
 direction = "negative" # possible directions for pre-post differences:
                         # "positive" (= clusters, where pat>HC), "negative" (= cluster, where HC>pat)
 
 
 # --- all directories
 # get data dir
-data_dir = _get_output_path(part, feature, seed)
+data_dir = get_output_path(part, feature, seed)
 
 # get output path to save results
 if pre_post_diff is True:
@@ -41,7 +41,7 @@ os.makedirs(output_dir, exist_ok=True)
 
 
 # --- Get path to lut file and load atlas image
-lut_file, atlas_img = _get_suit_atlas()
+lut_file, atlas_img = get_suit_atlas()
 
 
 # --- Define the file suffix
@@ -79,8 +79,8 @@ if pre_post_diff is True:
 
 else:
     sig_cluster_dir = os.path.join(data_dir, "sig_cluster_masks")
-    cluster_map_path = os.path.join(sig_cluster_dir, f"{table_file_suffix}_submask-0.8_logp_clustermass_fwer05.nii.gz")
-    cluster_table_path = os.path.join(data_dir, "cluster_tables", f"{table_file_suffix}_submask-0.8_cluster_table_perm_mass.csv")
+    cluster_map_path = os.path.join(sig_cluster_dir, f"{table_file_suffix}_all_twosided_cluster_id_map.nii.gz")
+    cluster_table_path = os.path.join(data_dir, "cluster_tables", f"{table_file_suffix}_all_twosided_cluster_table_perm_mass.csv")
 
 # load cluster map
 if not os.path.exists(cluster_map_path):
@@ -125,18 +125,11 @@ atlas_data = atlas_img.get_fdata().astype(int)
 # --- Get cluster labels
 neglog_alpha_05 = -np.log10(0.05)
 
-if pre_post_diff:
-    # stat_img is already a cluster-ID map
-    cluster_data = np.rint(stat_data).astype(int)
+# stat_img is already a cluster-ID map
+cluster_data = np.rint(stat_data).astype(int)
 
-    cluster_ids = sorted(np.unique(cluster_data))
-    cluster_ids = [c for c in cluster_ids if c != 0]
-else:
-    # stat_img is still a continuous logp map -> temporary old behavior
-    sig_mask = stat_data > neglog_alpha_05
-    cluster_data, n_clusters = ndimage.label(sig_mask)
-
-    cluster_ids = list(range(1, n_clusters + 1))
+cluster_ids = sorted(np.unique(cluster_data))
+cluster_ids = [c for c in cluster_ids if c != 0]
 
 print(f"Found {len(cluster_ids)} significant clusters")
 print("Cluster IDs from map:", cluster_ids)
