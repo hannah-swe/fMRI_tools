@@ -3,9 +3,10 @@ matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 import os
 import nibabel as nib
-from PPPD import (_get_data_path, _get_derivatives_path, _get_participants_tsv, _get_full_filename, _get_mask_filename,
-                  _get_output_path, _define_group_comparison, _get_selected_subject_list, _get_mask_file, _get_cluster_table_with_aal_labels)
+from PPPD import (get_derivatives_path, get_participants_tsv, get_mask_filename,
+                  get_output_path, define_group_comparison, get_selected_subject_list, get_mask_file)
 from PPPD.subjects import subs, subjects_to_exclude
+from PPPD.utils import get_cluster_table_with_aal_labels
 from nilearn.glm.second_level import SecondLevelModel, non_parametric_inference
 from nilearn.image import threshold_img, math_img
 from nilearn.plotting import plot_stat_map, plot_design_matrix, plot_glass_brain
@@ -40,17 +41,19 @@ n_perm = 10000
 
 
 # --- Load participants.tsv
-participants_df = _get_participants_tsv()
+participants_df = get_participants_tsv()
 participants_df["subject_id"] = participants_df["participant_id"].apply(lambda x: f"sub-{x:03d}")
 participants_df["part"] = participants_df["participant_id"].apply(lambda x: 1 if x < 100 else 2)
 
+# --- Derivatives path used for subject based mask strategy
+deriv_dir = get_derivatives_path(feature)
 
 # --- Group mapping for contrast via predefined comparison strategy:
-group_mapping = _define_group_comparison(group_comparison)
+group_mapping = define_group_comparison(group_comparison)
 
 
 # --- Choose subjects depending on experimental part and exclude subjects who participated in both parts:
-selected_subs = _get_selected_subject_list(part, subs, subjects_to_exclude)
+selected_subs = get_selected_subject_list(part, subs, subjects_to_exclude)
 
 
 # --- Loop over seeds
@@ -58,12 +61,9 @@ for seed in seeds:
     print(f"\n === Running seed: {seed} === \n")
 
     # --- Output path where diff images already exist
-    output_dir = _get_output_path(part, feature, seed)
+    output_dir = get_output_path(part, feature, seed)
     output_dir = os.path.join(output_dir, "pre_post_diff")
     diff_dir = os.path.join(output_dir, "diff_images")
-
-    # --- Derivatives path used for subject based mask strategy
-    deriv_dir = _get_derivatives_path(feature, seed)
 
 
     # --- Define the file suffix
@@ -109,8 +109,8 @@ for seed in seeds:
 
         if mask_strategy == "subject_based":
             for run in runs:
-                mask_filename = _get_mask_filename(subject_id, task, run, feature, seed)
-                mask_path = os.path.join(deriv_dir, subject_id, "func", f"task-{task}", mask_filename)
+                mask_filename = get_mask_filename(subject_id, task, run, feature, seed)
+                mask_path = os.path.join(deriv_dir, subject_id, mask_filename)
                 if not os.path.exists(mask_path):
                     print(f"Missing mask: {mask_path}")
                     continue
@@ -152,7 +152,7 @@ for seed in seeds:
     elif mask_strategy == "predefined":
         if predefined_mask is None:
             raise ValueError("No predefined mask was loaded.")
-        analysis_mask = _get_mask_file(predefined_mask)
+        analysis_mask = get_mask_file(predefined_mask)
     else:
         raise ValueError(f"Unknown mask strategy {mask_strategy}")
 
@@ -256,7 +256,7 @@ for seed in seeds:
     logp_mass_thr_float = math_img("img.astype(float)", img=signed_logp_mass_thr)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        cluster_table_perm_mass, label_maps = _get_cluster_table_with_aal_labels(
+        cluster_table_perm_mass, label_maps = get_cluster_table_with_aal_labels(
             stat_img=logp_mass_thr_float,
             stat_threshold=neglog_alpha_05,
             cluster_threshold=0,
