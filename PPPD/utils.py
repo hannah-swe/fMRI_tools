@@ -1,26 +1,21 @@
 import os
-import yaml
 import pandas as pd
-import nibabel as nib
 import numpy as np
 import xml.etree.ElementTree as ET
 from nilearn.image import load_img
 from nilearn.reporting import get_clusters_table
 from scipy.spatial.distance import cdist
 from nilearn.datasets import fetch_atlas_juelich
+from .config import load_config
 
 
 # Load config.yml
-PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
-config_file = os.path.join(PROJECT_DIR, "config.yml")
-with open(config_file, "r") as f:
-    config = yaml.safe_load(f)
-
-analysis_path = config["analysis_path"]
-output_path = config["output_path"]
-mask_path = config["mask_path"]
-aal_path = config["aal_path"]
-suit_path = config["suit_path"]
+config = load_config()
+analysis_path = config["paths"]["analysis_path"]
+output_path = config["paths"]["output_path"]
+mask_path = config["paths"]["mask_path"]
+aal_path = config["paths"]["aal_path"]
+suit_path = config["paths"]["suit_path"]
 
 
 # Load manually downloaded AAL atlas (NIfTI + XML) from local directory

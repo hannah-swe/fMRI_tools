@@ -7,6 +7,8 @@ from PPPD import (get_derivatives_path, get_participants_tsv, get_full_filename,
                   get_output_path, define_group_comparison, get_selected_subject_list, get_mask_file)
 from PPPD.subjects import subs, subjects_to_exclude
 from PPPD.utils import (get_cluster_table_with_aal_labels, get_cluster_table_with_juelich_prob_labels)
+from PPPD.config import load_config
+from PPPD.plotting import get_colorbar_limits
 from nilearn.glm import threshold_stats_img
 from nilearn.glm.second_level import SecondLevelModel, non_parametric_inference
 from nilearn.image import threshold_img, math_img
@@ -18,28 +20,51 @@ import warnings
 import gc
 
 
-# --- Script configuration:
-task = "rest"
-run = "run-01" # "run-01" == pre, "run-02" == post
-part = None # supported: None, 1, 2 (None: all subjects; part 1: subjects < 100; part 2: subjects >= 100)
-feature = "falff" # supported features: "falff", "seed_based", "alff"
-seeds = ["InsulaId1L"] # List of supported seeds:
+# ---- Load script configuration from config.yml
+config = load_config()
+
+task = config["analysis"]["task"]
+runs = config["analysis"]["runs"] # "run-01" == pre, "run-02" == post
+run = "run-01"
+part = config["analysis"]["part"] # supported: None, 1, 2 (None: all subjects; 1: subjects < 100; 2: subjects >= 100)
+feature = config["analysis"]["feature"] # supported features: "falff", "seed_based", "alff"
+seeds = config["analysis"]["seeds"] # List of supported seeds:
                                     # "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
                                     # "InsulaOP3RAnat", "InsulaOP3Sphere",
                                     # "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",
-                                    # "OperculumOP1L", "OperculumOP1R", "OperculumOP2L", "OperculumOP2R", "OperculumOP4L", "OperculumOP4R",
-                                    # "Precuneus",
+                                    # "OperculumOP1L", "OperculumOP1R", "OperculumOP2L", "OperculumOP2R",
+                                    # "OperculumOP4L", "OperculumOP4R", "Precuneus",
                                     # "CSv", "CSvR",
                                     # "V1L", "V1R", "V2L", "V2R", "V5L", "V5R", "V6L", "V6R",
                                     # "VermisUvulaL", "VermisVII"
-                        # for feature = "falff" or "alff" do seed = None
-group_comparison = "pat>HC" # supported comparisons: "pat>HC", "HC>pat"
-# mask settings
-mask_strategy = "subject_based" # supported strategies: "subject_based", "predefined"
-predefined_mask = "vvn" # supported masks: "dmn", "vvn"
-threshold_mask = 0.8 # only used if mask_strategy == "subject_based"
-# number of permutations for non-parametric cluster-based permutation test
-n_perm = 10000
+group_comparison = config["analysis"]["group_comparison"] # supported comparisons: "pat>HC", "HC>pat"
+mask_strategy = config["mask"]["strategy"] # supported strategies: "subject_based", "predefined"
+predefined_mask = config["mask"]["predefined_mask"]
+threshold_mask = config["mask"]["threshold"] # only used if mask_strategy == "subject_based"
+n_perm = config["statistics"]["n_perm"] # number of permutations for non-parametric cluster-based permutation test
+t_test_strategy = config["statistics"]["t_test_strategy"] # either two-sided or one-sided
+
+if t_test_strategy == "two_sided":
+    two_sided = True
+    z_threshold_p001 = 3.29
+    test_label = "twosided"
+    threshold_label = "|z| > 3.29"
+    cmap = "RdBu_r"
+    symmetric_cbar = True
+elif t_test_strategy == "one_sided":
+    two_sided = False
+    z_threshold_p001 = 3.09
+    test_label = "onesided"
+    threshold_label = "z > 3.09"
+    cmap = "inferno"
+    symmetric_cbar = False
+else:
+    raise ValueError(f"Unknown t_test_strategy: {t_test_strategy}. Use 'two_sided' or 'one_sided'.")
+
+print(f"Used configuration parameters:\n"
+      f"task = {task}\nrun = {run}\npart = {part}\nfeature = {feature}\nseeds = {seeds}\n"
+      f"group_comparison = {group_comparison}\nmask_strategy = {mask_strategy}\nn_perm = {n_perm}\n"
+      f"t_test_strategy = {t_test_strategy}\ntwo_sided = {two_sided}\n")
 
 
 # --- Load participants.tsv
@@ -79,7 +104,7 @@ for seed in seeds:
     else:
         part_label = f"{part}"
         base_title = f"{base_title}; subjects part: {part_label}"
-    file_suffix = f"{file_suffix}_{part_label}"
+    file_suffix = f"{file_suffix}_{part_label}_{test_label}"
 
 
     # --- Load data:
@@ -169,18 +194,23 @@ for seed in seeds:
 
     # Version 1: abs(z) > 3.09 (equivalent to p < 0.001 one-sided test), cluster size > 10 voxels
     # z(threshold)=3.09 for p=0.001 when testing one-sided; 3.29 for two-sided
-    thresholded_map1 = threshold_img(z_map, threshold=3.29, cluster_threshold=10, two_sided=True)
+    thresholded_map1 = threshold_img(z_map, threshold=z_threshold_p001, cluster_threshold=10, two_sided=two_sided)
     thr1_data = thresholded_map1.get_fdata()
     # plot thresholded maps if there are any voxels/clusters left
     if np.any(thr1_data != 0):
-        plot_stat_map(thresholded_map1, display_mode='mosaic', cmap="RdBu_r", threshold=3.29, symmetric_cbar=True,
-                      vmax=np.nanmax(np.abs(thr1_data)), title=f"z map {base_title}; |z| > 3.29; clusters > 10 voxels") # vmin=3.09
+        # get vmin and vmax
+        vmin, vmax = get_colorbar_limits(data=thr1_data, threshold=z_threshold_p001, two_sided=two_sided)
+        # plot
+        plot_stat_map(thresholded_map1, display_mode='mosaic', cmap=cmap, threshold=z_threshold_p001,
+                      symmetric_cbar=symmetric_cbar, vmin=vmin, vmax=vmax,
+                      title=f"z map {base_title}; {threshold_label}; clusters > 10 voxels")
         plt.show()
         fig = plt.figure(figsize=(9,5))
-        display = plot_glass_brain(thresholded_map1, cmap="RdBu_r", threshold=3.29, symmetric_cbar=True, vmax=np.nanmax(np.abs(thr1_data)),
-                                   plot_abs=False, figure=fig, title=None) # vmin=3.09,
-        display.frame_axes.figure.suptitle(f"z map {base_title}; z > 3.09; clusters > 10 voxels")
-        display.savefig(os.path.join(output_dir, "01_uncorrected", f"{file_suffix}_twosided_uncorrected_p001_cluster10.png"))
+        display = plot_glass_brain(thresholded_map1, cmap=cmap, threshold=z_threshold_p001,
+                                   symmetric_cbar=symmetric_cbar, vmin=vmin, vmax=vmax,
+                                   plot_abs=False, figure=fig, title=None)
+        display.frame_axes.figure.suptitle(f"z map {base_title}; {threshold_label}; clusters > 10 voxels")
+        display.savefig(os.path.join(output_dir, "01_uncorrected", f"{file_suffix}_uncorrected_p001_cluster10.png"))
     else:
         print("No suprathreshold clusters; skipping plots.")
     # get cluster table with anatomical labels
@@ -188,25 +218,11 @@ for seed in seeds:
         warnings.simplefilter("ignore")
         cluster_table1 = get_cluster_table_with_aal_labels(
             stat_img=thresholded_map1,
-            stat_threshold=3.29,
+            stat_threshold=z_threshold_p001,
             cluster_threshold=10,
-            two_sided=True
+            two_sided=two_sided,
         )
-    '''
-    # create model report as html regardless if suprathreshold clusters are left or not
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        report_v1 = second_level_model_unpaired.generate_report(
-            contrasts="group",
-            title=f"GLM report | {base_title} | z > 3.09, cluster > 10",
-            height_control=None,
-            threshold=3.09,
-            cluster_threshold=10,
-            two_sided=False,
-            plot_type="glass",
-        )
-    report_v1.save_as_html(os.path.join(output_dir, "01_uncorrected", f"glm_report_{file_suffix}_uncorrected_p001_cluster10.html"))
-    '''
+
 
     # --- NON-PARAMETRIC TESTS: permutation inference with cluster-level correction:
     # threshold is in p-scale, not z-scale; threshold=0.001 corresponds to a cluster-forming threshold of p < .001
@@ -219,7 +235,7 @@ for seed in seeds:
             mask=analysis_mask,
             model_intercept=False,   # intercept is already in the design matrix
             n_perm=n_perm,
-            two_sided_test=True,
+            two_sided_test=two_sided,
             threshold=0.001,         # cluster-forming threshold in p-scale
             random_state=42,
             n_jobs=8,                # adapt to your system
@@ -230,108 +246,122 @@ for seed in seeds:
     neglog_alpha_05 = -np.log10(0.05)
     logp_mass_thr = threshold_img(perm_out["logp_max_mass"], threshold=neglog_alpha_05, two_sided=False)
 
-    # Check if there are any significant cluster
-    has_sig_clusters = np.any(logp_mass_thr.get_fdata() > neglog_alpha_05)
+    perm_plot_dir = os.path.join(output_dir, "02_nonparametric")
+    os.makedirs(perm_plot_dir, exist_ok=True)
+    perm_mask_dir = os.path.join(output_dir, "tresh_cluster_masks")
+    os.makedirs(perm_mask_dir, exist_ok=True)
 
-    if not has_sig_clusters:
-        print("No clusters survive permutation cluster-mass FWER correction.")
-    else:
-        # Save significant cluster mask
-        perm_mask_dir = os.path.join(output_dir, "tresh_cluster_masks")
-        os.makedirs(perm_mask_dir, exist_ok=True)
-        logp_mass_path = os.path.join(perm_mask_dir, f"{file_suffix}_twosided_logp_clustermass_fwer05.nii.gz")
-        logp_mass_thr.to_filename(logp_mass_path)
+    perm_cluster_img = None
+    has_sig_clusters = False
 
-        # Plot cluster-mass corrected map
-        data = logp_mass_thr.get_fdata()
-        visible = data[data > neglog_alpha_05]
-        if len(visible) > 0:
-            vmax = np.ceil(np.max(visible) * 10) / 10
-        else:
-            vmax = neglog_alpha_05 + 0.1
-        fig = plt.figure(figsize=(9, 5))
-        display = plot_glass_brain(logp_mass_thr, cmap="inferno", threshold=neglog_alpha_05, vmax=vmax,
-                                   figure=fig, title=None, colorbar=True) # vmin=neglog_alpha_05,
-        display.frame_axes.figure.suptitle(f"Permutation test cluster-mass FWER \n {base_title} | corrected p < .05")
-        display.savefig(os.path.join(output_dir, "04_nonparametric", f"{file_suffix}_twosided_perm_clustermass_fwer05.png"))
+    # plots for two-sided tests
+    if two_sided:
+        # For two-sided tests, use a signed -log10(p) map so that clusters can be assigned
+        # to the positive or negative direction of the contrast.
+        signed_logp_mass = math_img("np.sign(t) * logp", t=perm_out["t"], logp=perm_out["logp_max_mass"])
+        signed_logp_mass_thr = threshold_img(signed_logp_mass, threshold=neglog_alpha_05, two_sided=True)
 
-
-        # Signifikanzkarte mit Vorzeichen der t-Werte versehen
-        signed_logp_mass = math_img(
-            "np.sign(t) * logp",
-            t=perm_out["t"],
-            logp=perm_out["logp_max_mass"]
-        )
-        # zweiseitig thresholden: |signed -log10(p)| > -log10(.05)
-        signed_logp_mass_thr = threshold_img(
-            signed_logp_mass,
-            threshold=neglog_alpha_05,
-            two_sided=True
-        )
         data = signed_logp_mass_thr.get_fdata()
         has_sig_clusters = np.any(np.abs(data) > neglog_alpha_05)
+
         if not has_sig_clusters:
             print("No clusters survive permutation cluster-mass FWER correction.")
         else:
-            vmax = np.ceil(np.nanmax(np.abs(data)) * 10) / 10
-            fig = plt.figure(figsize=(9, 5))
-            display = plot_glass_brain(
-                signed_logp_mass_thr,
-                cmap="RdBu_r",
-                threshold=neglog_alpha_05,
-                vmax=vmax,
-                symmetric_cbar=True,
-                plot_abs=False,  # wichtig!
-                figure=fig,
-                title=None,
-                colorbar=True
+            signed_logp_mass_path = os.path.join(
+                perm_mask_dir,
+                f"{file_suffix}_signed_logp_clustermass_fwer05.nii.gz"
             )
-            display.frame_axes.figure.suptitle(
-                f"Permutation test cluster-mass FWER\n"
-                f"{base_title} | corrected p < .05"
-            )
-            display.savefig(
-                os.path.join(
-                    output_dir,
-                    "04_nonparametric",
-                    f"{file_suffix}_twosided_perm_clustermass_fwer05_signed.png"
-                )
-            )
+            signed_logp_mass_thr.to_filename(signed_logp_mass_path)
 
-        # --- Get cluster table with aal and julich brain atlas
-        # create a binary/significant map from cluster-size corrected output
-        logp_mass_thr_float = math_img("img.astype(float)", img=perm_out["logp_max_mass"])
+            vmin, vmax = get_colorbar_limits(data=data, threshold=neglog_alpha_05, two_sided=True)
+
+            fig = plt.figure(figsize=(9, 5))
+            display = plot_glass_brain(signed_logp_mass_thr, cmap=cmap, threshold=neglog_alpha_05, vmin=vmin, vmax=vmax,
+                                       symmetric_cbar=True, plot_abs=False, figure=fig, title=None, colorbar=True)
+            display.frame_axes.figure.suptitle(f"Permutation test cluster-mass FWER\n"
+                                               f"{base_title} | corrected p < .05")
+            display.savefig(os.path.join(perm_plot_dir,
+                                         f"{file_suffix}_{test_label}_perm_clustermass_fwer05.png"))
+
+        perm_cluster_img = signed_logp_mass_thr
+
+    # plots for one-sided tests
+    else:
+        # For one-sided tests, the direction is already determined by the contrast.
+        # Therefore, plot the unsigned corrected -log10(p) map.
+        logp_mass_thr = threshold_img(perm_out["logp_max_mass"], threshold=neglog_alpha_05, two_sided=False)
+
+        data = logp_mass_thr.get_fdata()
+        has_sig_clusters = np.any(data > neglog_alpha_05)
+
+        if not has_sig_clusters:
+            print("No clusters survive permutation cluster-mass FWER correction.")
+        else:
+            logp_mass_path = os.path.join(
+                perm_mask_dir,
+                f"{file_suffix}_logp_clustermass_fwer05.nii.gz"
+            )
+            logp_mass_thr.to_filename(logp_mass_path)
+
+            vmin, vmax = get_colorbar_limits(data=data, threshold=neglog_alpha_05, two_sided=False)
+
+            fig = plt.figure(figsize=(9, 5))
+            display = plot_glass_brain(logp_mass_thr, cmap=cmap, threshold=neglog_alpha_05, vmin=vmin, vmax=vmax,
+                                       figure=fig, title=None, colorbar=True)
+            display.frame_axes.figure.suptitle(f"Permutation test cluster-mass FWER\n"
+                                               f"{base_title} | corrected p < .05")
+            display.savefig(os.path.join(perm_plot_dir,
+                                         f"{file_suffix}_perm_clustermass_fwer05.png"))
+
+        perm_cluster_img = logp_mass_thr
+
+
+    # --- Get cluster table with aal and julich brain atlas
+    if perm_cluster_img is None:
+        print("No significant clusters found. Skipping cluster tables.")
+    else:
+        perm_cluster_img_float = math_img("img.astype(float)", img=perm_cluster_img)
+
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             cluster_table_perm_mass, label_maps = get_cluster_table_with_aal_labels(
-                stat_img=logp_mass_thr_float,
+                stat_img=perm_cluster_img_float,
                 stat_threshold=neglog_alpha_05,   # binary image after math_img
                 cluster_threshold=0,
-                two_sided=True,
+                two_sided=two_sided,
                 return_label_maps=True,
             )
+
+        label_maps = label_maps[0]
+
         if cluster_table_perm_mass.empty:
             print("Cluster table is empty despite significant voxels. Skipping saves.")
         else:
-            label_maps = label_maps[0]
-            cluster_table_perm_mass["p-value"] = (10 ** (-cluster_table_perm_mass["Peak Stat"]))
+            cluster_table_perm_mass["p-value"] = (10 ** (-np.abs(cluster_table_perm_mass["Peak Stat"])))
 
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 cluster_table_perm_mass_juelich = get_cluster_table_with_juelich_prob_labels(
-                    stat_img=logp_mass_thr_float,
+                    stat_img=perm_cluster_img_float,
                     stat_threshold=neglog_alpha_05,
                     cluster_threshold=0,
-                    two_sided=True,
+                    two_sided=two_sided,
                     atlas_name="prob-2mm",
                     top_n=5,
                     min_prob=5.0
                 )
 
             # combine tables with aal and juelich label
-            cols_aal = ["Cluster ID", "X", "Y", "Z", "Peak Stat", "p-value", "Cluster Size (mm3)", "aal_label", "distance_mm"]
+            cols_aal = [
+                "Cluster ID",
+                "X", "Y", "Z",
+                "Peak Stat", "p-value",
+                "Cluster Size (mm3)",
+                "aal_label", "distance_mm"
+            ]
             cols_juelich = ["Cluster ID", "juelich_top_probs"]
-            cluster_table_combined = (cluster_table_perm_mass[cols_aal]
+            cluster_table_combined = (
+                cluster_table_perm_mass[cols_aal]
                 .merge(
                     cluster_table_perm_mass_juelich[cols_juelich],
                     on="Cluster ID",
@@ -348,14 +378,16 @@ for seed in seeds:
             # save cluster table
             cluster_table_dir = os.path.join(output_dir, "cluster_tables")
             os.makedirs(cluster_table_dir, exist_ok=True)
-            cluster_table_path = os.path.join(cluster_table_dir, f"{file_suffix}_twosided_cluster_table_perm_mass.csv")
+
+            cluster_table_path = os.path.join(cluster_table_dir, f"{file_suffix}_cluster_table_perm_mass.csv")
             cluster_table_combined.to_csv(cluster_table_path, index=False)
 
             # save significant cluster mask as true cluster-ID map
             posthoc_mask_dir = os.path.join(output_dir, "sig_cluster_masks")
             os.makedirs(posthoc_mask_dir, exist_ok=True)
+
             for lm in label_maps:
-                lm_path = os.path.join(posthoc_mask_dir, f"{file_suffix}_twosided_cluster_id_map.nii.gz")
+                lm_path = os.path.join(posthoc_mask_dir, f"{file_suffix}_cluster_id_map.nii.gz")
                 lm.to_filename(lm_path)
                 print(f"Saved cluster ID map: {lm_path}")
 
