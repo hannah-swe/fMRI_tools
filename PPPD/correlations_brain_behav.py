@@ -66,7 +66,7 @@ def plot_corr_heatmap(results_df, group, corr_plot_path):
     rho_plot = rho_df.rename(index=behavior_labels, columns=brain_labels)
     p_plot = p_df.rename(index=behavior_labels, columns=brain_labels)
 
-    plt.figure(figsize=(7, 7))
+    plt.figure(figsize=(8, 7))
     ax = sns.heatmap(
         rho_plot,
         cmap="coolwarm",
@@ -202,8 +202,13 @@ selected_subs = get_selected_subject_list(part, subs, subjects_to_exclude)
 
 
 # --- Get connectivity dataframe with subject values for all significant cluster per seed
-connectivity_df_path = os.path.join(get_connectivity_path(), "connectivity_pre-datadataframe_wide_format.csv")
+connectivity_df_path = os.path.join(get_connectivity_path(), "connectivity_pre-data_dataframe_wide_format.csv")
 connectivity_df = pd.read_csv(connectivity_df_path)
+
+
+# --- Get falff dataframe with subject values for significant cluster
+falff_df_path = os.path.join(get_connectivity_path(), "falff_pre-data_dataframe_wide_format.csv")
+falff_df = pd.read_csv(falff_df_path)
 
 
 # --- Load full main values table for questionnaire, behavioral and posturography data
@@ -216,6 +221,7 @@ corr_plot_path = os.path.join(get_connectivity_path(), "brain_behav_corr")
 # --- Merge connectivity and main values dataframe
 assert main_df["subject_num"].is_unique
 assert connectivity_df["subject_num"].is_unique
+assert falff_df["subject_num"].is_unique
 df_full = main_df.merge(
     connectivity_df,
     on="subject_num",
@@ -235,6 +241,25 @@ if not (df_full["group_main"] == df_full["group_conn"]).all():
 df_full = df_full.drop(columns=["group_conn", "subject_id"])
 df_full = df_full.rename(columns={"group_main": "group"})
 
+df_full = df_full.merge(
+    falff_df,
+    on="subject_num",
+    how="left",
+    suffixes=("_main", "_falff")
+)
+# quality check: ensure group labels are identical
+if not (df_full["group_main"] == df_full["group_falff"]).all():
+    mismatches = df_full.loc[
+        df_full["group_main"] != df_full["group_falff"],
+        ["subject_num", "group_main", "group_falff"]
+    ]
+    raise ValueError(
+        f"Mismatch found in group labels:\n{mismatches}"
+    )
+# clean up columns
+df_full = df_full.drop(columns=["group_falff", "subject_id"])
+df_full = df_full.rename(columns={"group_main": "group"})
+
 
 # --- Get dataframes split by group
 df_pat = df_full[df_full["group"] == "patient"]
@@ -250,7 +275,8 @@ brain_vars = [
     "OperculumOP1L--Vermis_8_median",
     "OperculumOP1R--Vermis_9_median",
     "V5L--Cerebellum_6_R_median",
-    "V5R--Cerebellum_Crus1_L_median"
+    "V5R--Cerebellum_Crus1_L_median",
+    "falff--Hippocampus_R_median"
 ]
 
 behavior_vars = [
@@ -302,7 +328,8 @@ brain_labels = {
     "OperculumOP1L--Vermis_8_median": "OP1L–Verm",
     "OperculumOP1R--Vermis_9_median": "OP1R–Verm",
     "V5L--Cerebellum_6_R_median": "V5L–Crus1",
-    "V5R--Cerebellum_Crus1_L_median": "V5R-Crus1"
+    "V5R--Cerebellum_Crus1_L_median": "V5R-Crus1",
+    "falff--Hippocampus_R_median": "falff-Hippo"
 }
 behavior_labels = {
     "age": "Age",
