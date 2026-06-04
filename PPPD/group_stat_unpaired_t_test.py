@@ -20,7 +20,7 @@ import warnings
 import gc
 
 
-# ---- Load script configuration from config.yml
+# ---- Load script configuration from config.yml --> don't change anything here, make all configurations in config.yml
 config = load_config()
 
 task = config["analysis"]["task"]
@@ -44,6 +44,7 @@ threshold_mask = config["mask"]["threshold"] # only used if mask_strategy == "su
 n_perm = config["statistics"]["n_perm"] # number of permutations for non-parametric cluster-based permutation test
 t_test_strategy = config["statistics"]["t_test_strategy"] # either two-sided or one-sided
 
+# Definition of plot parameters depending on t-test strategy
 if t_test_strategy == "two_sided":
     two_sided = True
     z_threshold_p001 = 3.29
@@ -281,7 +282,7 @@ for seed in seeds:
             display.frame_axes.figure.suptitle(f"Permutation test cluster-mass FWER\n"
                                                f"{base_title} | corrected p < .05")
             display.savefig(os.path.join(perm_plot_dir,
-                                         f"{file_suffix}_{test_label}_perm_clustermass_fwer05.png"))
+                                         f"{file_suffix}_perm_clustermass_fwer05.png"))
 
         perm_cluster_img = signed_logp_mass_thr
 
