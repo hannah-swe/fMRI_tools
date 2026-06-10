@@ -260,6 +260,8 @@ if not (df_full["group_main"] == df_full["group_falff"]).all():
 df_full = df_full.drop(columns=["group_falff", "subject_id"])
 df_full = df_full.rename(columns={"group_main": "group"})
 
+# df_full = df_full[df_full["subject_num"] != 122]
+
 
 # --- Get dataframes split by group
 df_pat = df_full[df_full["group"] == "patient"]
