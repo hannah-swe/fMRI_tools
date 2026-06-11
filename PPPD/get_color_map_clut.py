@@ -1,5 +1,6 @@
 from pathlib import Path
 import matplotlib.cm as cm
+import matplotlib.pyplot as plt
 import numpy as np
 
 # Zielpfad anpassen
@@ -29,63 +30,79 @@ def save_clut(cmap, filename, n_nodes=21):
                 f"{int(r*255)}|{int(g*255)}|{int(b*255)}|255\n"
             )
 
-# Gesamte RdBu-Skala
-save_clut(cmap, outdir / "RdBu_r.clut")
 
-# Nur blaue Hälfte
+# einfarbige LUT
+def save_solid_clut(rgb, filename, n_nodes=21):
+    r, g, b = [int(255 * c) for c in rgb[:3]]
+
+    with open(filename, "w") as f:
+        f.write("[FLT]\nmin=0\nmax=0\n")
+
+        f.write("[INT]\n")
+        f.write(f"numnodes={n_nodes}\n")
+
+        f.write("[BYT]\n")
+        for i in range(n_nodes):
+            intensity = round(i * 255 / (n_nodes - 1))
+            f.write(f"nodeintensity{i}={intensity}\n")
+
+        f.write("[RGBA255]\n")
+        for i in range(n_nodes):
+            f.write(f"nodergba{i}={r}|{g}|{b}|255\n")
+
+
+# weiß -> tab10-Farbe
+def save_monochrome_clut(rgb, filename, n_nodes=21):
+    r0, g0, b0 = rgb[:3]
+
+    with open(filename, "w") as f:
+        f.write("[FLT]\nmin=0\nmax=0\n")
+
+        f.write("[INT]\n")
+        f.write(f"numnodes={n_nodes}\n")
+
+        f.write("[BYT]\n")
+        for i in range(n_nodes):
+            intensity = round(i * 255 / (n_nodes - 1))
+            f.write(f"nodeintensity{i}={intensity}\n")
+
+        f.write("[RGBA255]\n")
+        for i in range(n_nodes):
+            alpha = i / (n_nodes - 1)
+
+            r = int(255 * ((1 - alpha) + alpha * r0))
+            g = int(255 * ((1 - alpha) + alpha * g0))
+            b = int(255 * ((1 - alpha) + alpha * b0))
+
+            f.write(f"nodergba{i}={r}|{g}|{b}|255\n")
+
+
+
+# RdBu scale (change cmap to get another matplotlib colormap)
+save_clut(cmap, outdir / "RdBu_r.clut")
+# blue half
 blue_half = lambda x: cmap(x * 0.5)
 save_clut(blue_half, outdir / "Bu.clut")
-
-# Nur rote Hälfte
+# red half
 red_half = lambda x: cmap(0.5 + x * 0.5)
 save_clut(red_half, outdir / "Rd.clut")
 
 print("Bu.clut und Rd.clut gespeichert.")
 
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib as mpl
-from pathlib import Path
 
-outdir = Path("/Pfad/zu/deinem/Ordner")
-vmax = 2.1
+# Neue tab10-Farben
+tab10 = plt.get_cmap("tab10")
 
-# obere Skala: Blau aus RdBu_r > 0
-blue_cmap = mpl.cm.get_cmap("RdBu_r")
-blue_half = mpl.colors.LinearSegmentedColormap.from_list(
-    "blue_half",
-    blue_cmap(np.linspace(0.5, 1.0, 256))
-)
+# einfarbig, ohne Abstufung
+# save_solid_clut(tab10(0), outdir / "tab10_blue_solid.clut")
+# save_solid_clut(tab10(1), outdir / "tab10_orange_solid.clut")
+# save_solid_clut(tab10(2), outdir / "tab10_green_solid.clut")
+# save_solid_clut(tab10(3), outdir / "tab10_red_solid.clut")
+# save_solid_clut(tab10(4), outdir / "tab10_purple_solid.clut")
 
-# untere Skala: Rot aus RdBu > 0
-red_cmap = mpl.cm.get_cmap("RdBu")
-red_half = mpl.colors.LinearSegmentedColormap.from_list(
-    "red_half",
-    red_cmap(np.linspace(0.5, 1.0, 256))
-)
+# optional: weiß -> Farbe
+save_monochrome_clut(tab10(6), outdir / "tab10_pink.clut")
+save_monochrome_clut(tab10(8), outdir / "tab10_green.clut")
+save_monochrome_clut(tab10(9), outdir / "tab10_blue.clut")
 
-fig, axes = plt.subplots(
-    nrows=2,
-    figsize=(7, 1.0),
-    constrained_layout=True
-)
-
-norm = mpl.colors.Normalize(vmin=0, vmax=vmax)
-ticks = [0, 0.5, 1.0, 1.5, 2.0]
-
-for ax, cmap in zip(axes, [blue_half, red_half]):
-    cb = mpl.colorbar.ColorbarBase(
-        ax,
-        cmap=cmap,
-        norm=norm,
-        orientation="horizontal",
-        ticks=ticks
-    )
-    cb.ax.tick_params(labelsize=10, length=4, width=0.8)
-    cb.outline.set_linewidth(0.5)
-
-# als Vektorgrafik speichern
-fig.savefig(outdir / "RdBu_split_colorbars.svg", bbox_inches="tight")
-fig.savefig(outdir / "RdBu_split_colorbars.pdf", bbox_inches="tight")
-
-plt.show()
+print("Alle CLUT-Dateien gespeichert.")

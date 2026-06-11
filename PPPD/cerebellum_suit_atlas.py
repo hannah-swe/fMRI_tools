@@ -49,6 +49,9 @@ print(f"Used configuration parameters:\n"
 lut_file, atlas_img = get_suit_atlas()
 
 
+# --- Store all resampled cluster maps for combined overlap plot
+combined_cluster_maps = []
+
 # --- Loop over seeds
 for seed in seeds:
     print(f"\n=== Running seed: {seed} ===")
@@ -142,6 +145,12 @@ for seed in seeds:
 
     # stat_img is already a cluster-ID map
     cluster_data = np.rint(stat_data).astype(int)
+
+    combined_cluster_maps.append({
+        "seed": seed,
+        "cluster_map": cluster_data.copy(),
+        "ref_img": stat_resampled
+    })
 
     cluster_ids = sorted(np.unique(cluster_data))
     cluster_ids = [c for c in cluster_ids if c != 0]
@@ -305,3 +314,117 @@ for seed in seeds:
     plt.savefig(stat_plot_path, dpi=300, bbox_inches="tight")
     plt.show()
 
+
+# --- Plot all clusters from all seeds together + overlap count
+if len(combined_cluster_maps) > 0:
+
+    combined_output_dir = os.path.join(
+        get_output_path(part, feature, seed) if feature == "seed_based"
+        else get_output_path(part, feature, None),
+        "cerebellum_labeling",
+        "combined_seed_overlap_plot"
+    )
+    os.makedirs(combined_output_dir, exist_ok=True)
+
+    cluster_surfaces = []
+    cluster_labels = []
+
+    # --- Project every original cluster separately to surface
+    for entry in combined_cluster_maps:
+
+        seed_name = entry["seed"]
+        cluster_map = entry["cluster_map"]
+        ref_img = entry["ref_img"]
+
+        cluster_ids_this_seed = sorted(np.unique(cluster_map))
+        cluster_ids_this_seed = [c for c in cluster_ids_this_seed if c != 0]
+
+        for cluster_id in cluster_ids_this_seed:
+
+            binary_cluster = (cluster_map == cluster_id).astype(np.uint8)
+
+            cluster_img = nib.Nifti1Image(
+                binary_cluster,
+                affine=ref_img.affine,
+                header=ref_img.header
+            )
+            cluster_img.set_data_dtype(np.uint8)
+
+            cluster_surf = flatmap.vol_to_surf(
+                cluster_img,
+                space="MNI",
+                stats="nanmean"
+            )
+
+            cluster_surfaces.append(cluster_surf > 0)
+            cluster_labels.append(f"{seed_name}_cluster-{cluster_id}")
+
+    print(f"Collected {len(cluster_surfaces)} clusters across all seeds")
+
+    # --- Build combined surface maps
+    template = cluster_surfaces[0]
+
+    combined_label_surf = np.zeros_like(template, dtype=int)
+    overlap_count_surf = np.zeros_like(template, dtype=int)
+
+    for i, cluster_mask_surf in enumerate(cluster_surfaces, start=1):
+
+        # counts how many original clusters overlap at each surface point
+        overlap_count_surf[cluster_mask_surf] += 1
+
+        # stores one visible cluster ID per surface point
+        # if clusters overlap, the later one is shown in the label plot
+        combined_label_surf[cluster_mask_surf] = i
+
+    # --- Save cluster label lookup table
+    label_lookup = pd.DataFrame({
+        "Plot ID": np.arange(1, len(cluster_labels) + 1),
+        "Seed cluster": cluster_labels
+    })
+
+    label_lookup_path = os.path.join(
+        combined_output_dir,
+        f"{feature}_{group_comparison}_{part_label}_{test_label}_combined_cluster_labels.csv"
+    )
+    label_lookup.to_csv(label_lookup_path, index=False)
+
+    print("Saved cluster label lookup:")
+    print(label_lookup_path)
+
+    # ============================================================
+    # Plot 1: all clusters, different colors
+    # ============================================================
+    from matplotlib.colors import ListedColormap
+
+    cmap = plt.get_cmap("tab10")
+
+    custom_cmap = ListedColormap([
+        cmap(0),
+        cmap(0), #
+        cmap(6), #
+        cmap(3),
+        cmap(8), #
+        cmap(9), #
+        cmap(4), #
+        cmap(1), #
+        cmap(8),
+        cmap(9),
+    ])
+    flatmap.plot(
+        combined_label_surf,
+        overlay_type="label",
+        cmap=custom_cmap,
+        colorbar=False,
+        render="matplotlib",
+        alpha=1
+    )
+
+    combined_label_plot_path = os.path.join(
+        combined_output_dir,
+        f"{feature}_{group_comparison}_{part_label}_{test_label}_all_seeds_colored_clusters_flatmap.png"
+    )
+
+    plt.savefig(combined_label_plot_path, dpi=600)
+    plt.show()
+    print("Saved combined colored cluster flatmap:")
+    print(combined_label_plot_path)

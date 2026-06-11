@@ -42,6 +42,7 @@ circos = Circos(sectors, space=5)
 cmap = plt.get_cmap("tab20c")
 
 network_colors = {
+    "XX": cmap(0),
     "Visual": cmap(7),
     "Vestibular": cmap(11),
     "Cerebellum": cmap(15),
