@@ -291,7 +291,8 @@ behavior_vars = [
     "HADS_A_total",
     "HADS_D_total",
     "Neo.Skala_n",
-    "EOfirm_speed"
+    "EOfirm_speed",
+    "EOfirm_rating",
 ]
 
 
@@ -344,6 +345,7 @@ behavior_labels = {
     "HADS_D_total": "HADS-D",
     "Neo.Skala_n": "Neo_N",
     "EOfirm_speed": "Sway-speed",
+    "EOfirm_rating": "Sway-rating",
 }
 
 
