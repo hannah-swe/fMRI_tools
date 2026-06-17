@@ -7,33 +7,36 @@ from PPPD import (get_derivatives_path, get_participants_tsv, get_full_filename,
                   get_selected_subject_list, get_posthoc_cluster_mask)
 from PPPD.subjects import subs, subjects_to_exclude
 from PPPD.utils import get_cluster_table_with_aal_labels
+from PPPD.config import load_config
 from nilearn.masking import apply_mask
 import numpy as np
 import pandas as pd
 import seaborn as sns
 
+# ---- Load script configuration from config.yml --> don't change anything here, make all configurations in config.yml
+config = load_config()
 
-# --- Script configuration:
-task = "rest"
-runs = ["run-01", "run-02"] # pre, post
-part = None # supported: None, 1, 2 (None: all subjects; part 1: subjects < 100; part 2: subjects >= 100)
-feature = "seed_based" # supported features: "falff", "seed_based", "alff"
-seed = "OperculumOP4R" # List of supported seeds:
+task = config["analysis"]["task"]
+runs = config["analysis"]["runs"] # "run-01" == pre, "run-02" == post
+part = config["analysis"]["part"] # supported: None, 1, 2 (None: all subjects; 1: subjects < 100; 2: subjects >= 100)
+feature = config["analysis"]["feature"] # supported features: "falff", "seed_based", "alff"
+seed = config["analysis"]["seeds"][0] # List of supported seeds:
                                     # "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
                                     # "InsulaOP3RAnat", "InsulaOP3Sphere",
                                     # "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",
-                                    # "OperculumOP1L", "OperculumOP1R", "OperculumOP2L", "OperculumOP2R", "OperculumOP4L", "OperculumOP4R",
-                                    # "Precuneus",
+                                    # "OperculumOP1L", "OperculumOP1R", "OperculumOP2L", "OperculumOP2R",
+                                    # "OperculumOP4L", "OperculumOP4R", "Precuneus",
                                     # "CSv", "CSvR",
                                     # "V1L", "V1R", "V2L", "V2R", "V5L", "V5R", "V6L", "V6R",
                                     # "VermisUvulaL", "VermisVII"
-                        # for feature = "falff" or "alff" do seed = None
-group_comparison = "pat>HC" # supported comparisons: "pat>HC", "HC>pat"
-# define which cluster mask from mixed anova to use
+group_comparison = config["analysis"]["group_comparison"] # supported comparisons: "pat>HC", "HC>pat"
 direction = "negative" # possible directions: "positive" (= clusters, where pat>HC), "negative" (= cluster, where HC>pat)
 # define color palette for plotting
 palette = {"control": "teal", "patient": "hotpink"}
 
+print(f"Used configuration parameters:\n"
+      f"task = {task}\nruns = {runs}\npart = {part}\nfeature = {feature}\nseed = {seed}\n"
+      f"group_comparison = {group_comparison}")
 
 # --- Get all directories and participants.tsv:
 # path to halfpipe derivatives directory
@@ -74,6 +77,8 @@ selected_subs = get_selected_subject_list(part, subs, subjects_to_exclude)
 included_rows = []
 mask_path = get_posthoc_cluster_mask(feature=feature, seed=seed, group_comparison=group_comparison, part=part,
                                       direction=direction)
+mask_path = mask_path.replace("twosided_", "")
+
 for s in selected_subs:
     # get full subject id
     subject_id = f"sub-{s:03d}"
