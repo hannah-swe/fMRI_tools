@@ -368,3 +368,55 @@ for _, row in sig_pairs.iterrows():
         results_df,
         corr_plot_path,
     )
+
+
+# --- Correlate two brain variables
+tmp = df_full[["V5L--Cerebellum_6_R_median", "InsulaIg2L--Lingual_L_median"]].dropna()
+x = tmp["V5L--Cerebellum_6_R_median"]
+y = tmp["InsulaIg2L--Lingual_L_median"]
+
+rho, p = spearmanr(x, y)
+print(f"Spearman rho: {rho:.3f}")
+print(f"p-Wert: {p:.4f}")
+
+X = sm.add_constant(x)
+model = sm.RLM(
+    y,
+    X,
+    M=sm.robust.norms.HuberT()
+)
+fit = model.fit()
+
+intercept = fit.params["const"]
+beta = fit.params["V5L--Cerebellum_6_R_median"]
+print(f"Intercept: {intercept:.3f}")
+print(f"Beta: {beta:.3f}")
+
+plt.figure(figsize=(8, 7))
+ax = sns.scatterplot(
+    data=df_full,
+    x=x,
+    y=y,
+    hue="group",
+    palette=palette,
+    s=90,
+    alpha=0.7,
+    legend=False,
+)
+x_line = np.linspace(
+    x.min(),
+    x.max(),
+    100
+)
+y_line = intercept + beta * x_line
+ax.plot(
+    x_line,
+    y_line,
+    color="black",
+    linewidth=2
+)
+ax.set_title(f"ρ = {rho:.2f}, p = {p:.4f}")
+sns.despine()
+plt.tight_layout()
+plt.savefig("/data_wgs04/ag-sensomotorik/PPPD/analysis/group_level/plots/brain_corr_4.svg")
+plt.show()
