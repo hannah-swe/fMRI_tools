@@ -4,6 +4,7 @@ import matplotlib as mpl
 from pathlib import Path
 
 outdir = Path("/home/hannahschewe/")
+vmin = 0.7
 vmax = 2.1
 
 # obere Skala: Blau aus RdBu_r > 0
@@ -22,12 +23,12 @@ red_half = mpl.colors.LinearSegmentedColormap.from_list(
 
 fig, axes = plt.subplots(
     nrows=2,
-    figsize=(7, 1.0),
+    figsize=(3, 1.2),
     constrained_layout=True
 )
 
-norm = mpl.colors.Normalize(vmin=0, vmax=vmax)
-ticks = [0, 0.5, 1.0, 1.5, 2.0]
+norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+ticks = [0.8, 1.2, 1.6, 2.0]
 
 for ax, cmap in zip(axes, [blue_half, red_half]):
     cb = mpl.colorbar.ColorbarBase(
@@ -38,7 +39,7 @@ for ax, cmap in zip(axes, [blue_half, red_half]):
         ticks=ticks
     )
     cb.ax.tick_params(labelsize=10, length=4, width=0.8)
-    cb.outline.set_linewidth(0.5)
+    cb.outline.set_linewidth(0.7)
 
 # als Vektorgrafik speichern
 fig.savefig(outdir / "RdBu_split_colorbars.svg", bbox_inches="tight")
