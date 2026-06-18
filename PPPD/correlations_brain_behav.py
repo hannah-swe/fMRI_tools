@@ -7,7 +7,7 @@ from PPPD.subjects import subs, subjects_to_exclude
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from scipy.stats import spearmanr
+from scipy.stats import spearmanr, pearsonr, shapiro
 import statsmodels.api as sm
 
 
@@ -371,7 +371,11 @@ for _, row in sig_pairs.iterrows():
 
 
 # --- Correlate two brain variables
-tmp = df_full[["V5L--Cerebellum_6_R_median", "InsulaIg2L--Lingual_L_median"]].dropna()
+tmp = df_full[["InsulaIg2L--Lingual_L_median",
+    "InsulaIg2L--SupraMarginal_L_median",
+    "V5L--Cerebellum_6_R_median",
+    "V5R--Cerebellum_Crus1_L_median"]].dropna()
+
 x = tmp["V5L--Cerebellum_6_R_median"]
 y = tmp["InsulaIg2L--Lingual_L_median"]
 
@@ -418,5 +422,20 @@ ax.plot(
 ax.set_title(f"ρ = {rho:.2f}, p = {p:.4f}")
 sns.despine()
 plt.tight_layout()
-plt.savefig("/data_wgs04/ag-sensomotorik/PPPD/analysis/group_level/plots/brain_corr_4.svg")
+# plt.savefig("/data_wgs04/ag-sensomotorik/PPPD/analysis/group_level/plots/brain_corr_4.svg")
 plt.show()
+
+
+# --- Look up distributions
+dist_vars = [
+    "InsulaIg2L--Lingual_L_median",
+    "InsulaIg2L--SupraMarginal_L_median",
+    "V5L--Cerebellum_6_R_median",
+    "V5R--Cerebellum_Crus1_L_median"
+]
+
+for d in dist_vars:
+    stat, p = shapiro(df_full[d].dropna())
+    print(f"shapiro: {stat:.3f}, p = {p:.4f}")
+    sns.displot(df_full, x=d, kind="kde")
+    plt.show()
