@@ -17,6 +17,9 @@ neo_path_1 = os.path.join(main_values_tables_path, "NEO-FFI-Auswertung.xlsx")
 df1 = pd.read_excel(table_path_1, sheet_name="PPPD_values")
 df2 = pd.read_excel(table_path_2, sheet_name="main_values")
 
+ehq1_df = pd.read_excel(table_path_1, sheet_name="EHQ")
+ehq2_df = pd.read_excel(table_path_2, sheet_name="EHQ")
+
 neo1_df = pd.read_excel(neo_path_1, sheet_name="Tabelle1")
 neo2_df = pd.read_excel(table_path_2, sheet_name="NEO_Auswertung")
 
@@ -33,6 +36,8 @@ neo1_df = neo1_df.rename(columns={"NEO.Skala_n": "Neo.Skala_n"})
 # --- Keep only selected subjects
 df1 = df1[df1["SubjID"].isin(selected_subs)]
 df2 = df2[df2["SubjID"].isin(selected_subs)]
+ehq1_df = ehq1_df[ehq1_df["SubjID"].isin(selected_subs)]
+ehq2_df = ehq2_df[ehq2_df["SubjID"].isin(selected_subs)]
 neo1_df = neo1_df[neo1_df["SubjID"].isin(selected_subs)]
 neo2_df = neo2_df[neo2_df["SubjID"].isin(selected_subs)]
 
@@ -52,6 +57,7 @@ columns_to_keep = [
     "HADS_A_total",
     "HADS_D_total",
     "MSSQ_raw",
+    "EHQ (handedness)"
 ]
 
 df1 = df1[columns_to_keep]
@@ -70,6 +76,7 @@ df = df.rename(columns={
     "Gender": "gender",
     "GVSthresholdMRI": "GVS_threshold_mri",
     "GVSthresholdBehav": "GVS_threshold_behav",
+    "EHQ (handedness)": "EHQ",
 })
 # create group labels
 group_values = df["Group"].map({
@@ -81,6 +88,26 @@ group_values = df["Group"].map({
 group_idx = df.columns.get_loc("Group")
 # insert new column directly after "Group"
 df.insert(group_idx + 1, "group", group_values)
+
+
+# --- Select columns to keep for neo df
+columns_to_keep_ehq = [
+    "SubjID",
+    "Händigkeit"
+]
+ehq1_df = ehq1_df[columns_to_keep_ehq]
+ehq2_df = ehq2_df[columns_to_keep_ehq]
+ehq1_df = ehq1_df.rename(columns={"SubjID": "subject_num"})
+ehq2_df = ehq2_df.rename(columns={"SubjID": "subject_num"})
+
+
+# --- Concatenate ehq df
+ehq_df = pd.concat([ehq1_df, ehq2_df], ignore_index=True)
+
+
+# --- Merge main values and ehq df
+df = df.merge(ehq_df, on="subject_num", how="left")
+df = df.replace(999, np.nan)
 
 
 # --- Select columns to keep for neo df

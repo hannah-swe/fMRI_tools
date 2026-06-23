@@ -371,13 +371,18 @@ for _, row in sig_pairs.iterrows():
 
 
 # --- Correlate two brain variables
-tmp = df_full[["InsulaIg2L--Lingual_L_median",
+tmp = df_full[[
+    "group",
+    "InsulaIg2L--Lingual_L_median",
     "InsulaIg2L--SupraMarginal_L_median",
     "V5L--Cerebellum_6_R_median",
     "V5R--Cerebellum_Crus1_L_median"]].dropna()
 
-x = tmp["V5L--Cerebellum_6_R_median"]
-y = tmp["InsulaIg2L--Lingual_L_median"]
+tmp_pat = tmp[tmp["group"] == "patient"]
+tmp_con = tmp[tmp["group"] == "control"]
+
+x = tmp_con["V5L--Cerebellum_6_R_median"]
+y = tmp_con["InsulaIg2L--Lingual_L_median"]
 
 rho, p = spearmanr(x, y)
 print(f"Spearman rho: {rho:.3f}")
