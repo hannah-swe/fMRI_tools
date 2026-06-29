@@ -22,12 +22,8 @@ import gc
 task = "rest"
 run = "run-01" # pre, post
 part = None # supported: None, 1, 2 (None: all subjects; part 1: subjects < 100; part 2: subjects >= 100)
-feature = "seed_based" # supported features: "falff", "seed_based", "alff"
-seeds = ["InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R", "InsulaOP3RAnat",
-         "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",
-         "OperculumOP1L", "OperculumOP1R", "OperculumOP2L", "OperculumOP2R", "OperculumOP4L", "OperculumOP4R",
-         "Precuneus", "CSv", "CSvR", "V1L", "V1R", "V2L", "V2R", "V5L", "V5R", "V6L", "V6R",
-         "VermisUvulaL", "VermisVII"] # List of supported seeds:
+feature = "falff" # supported features: "falff", "seed_based", "alff"
+seeds = ["InsulaId1L"] # List of supported seeds:
                                     # "InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "InsulaIg2L", "InsulaIg2R",
                                     # "InsulaOP3RAnat", "InsulaOP3Sphere",
                                     # "IPLPFcmL", "IPLPFcmR", "IPLPFL", "IPLPFR",

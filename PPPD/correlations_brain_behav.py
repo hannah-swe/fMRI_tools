@@ -9,6 +9,7 @@ import pandas as pd
 import seaborn as sns
 from scipy.stats import spearmanr, pearsonr, shapiro
 import statsmodels.api as sm
+import statsmodels.formula.api as smf
 
 
 # Function to run spearman correlation and robust linear model
@@ -103,7 +104,7 @@ def plot_corr_heatmap(results_df, group, corr_plot_path):
     plt.xticks(rotation=45, ha="right")
     plt.yticks(rotation=0)
     plt.tight_layout()
-    plt.savefig(corr_plot_dir, dpi=300, bbox_inches="tight")
+    # plt.savefig(corr_plot_dir, dpi=300, bbox_inches="tight")
     plt.show()
 
     return rho_df, p_df
@@ -167,7 +168,7 @@ def plot_corr_from_results(brain_var, behavior_var, results_df, corr_plot_path):
     )
     sns.despine()
     plt.tight_layout()
-    plt.savefig(corr_plot_dir, dpi=300, bbox_inches="tight")
+    # plt.savefig(corr_plot_dir, dpi=300, bbox_inches="tight")
     plt.show()
 
 
@@ -260,7 +261,7 @@ if not (df_full["group_main"] == df_full["group_falff"]).all():
 df_full = df_full.drop(columns=["group_falff", "subject_id"])
 df_full = df_full.rename(columns={"group_main": "group"})
 
-# df_full = df_full[df_full["subject_num"] != 122]
+df_full = df_full[df_full["subject_num"] != 40]
 
 
 # --- Get dataframes split by group
@@ -372,17 +373,22 @@ for _, row in sig_pairs.iterrows():
 
 # --- Correlate two brain variables
 tmp = df_full[[
+    "subject_num",
     "group",
+    "age",
+    "ALQ_total",
+    "Niigata_total",
     "InsulaIg2L--Lingual_L_median",
     "InsulaIg2L--SupraMarginal_L_median",
     "V5L--Cerebellum_6_R_median",
-    "V5R--Cerebellum_Crus1_L_median"]].dropna()
+    "V5R--Cerebellum_Crus1_L_median",
+]]
 
 tmp_pat = tmp[tmp["group"] == "patient"]
 tmp_con = tmp[tmp["group"] == "control"]
 
-x = tmp_con["V5L--Cerebellum_6_R_median"]
-y = tmp_con["InsulaIg2L--Lingual_L_median"]
+x = tmp_pat["V5L--Cerebellum_6_R_median"]
+y = tmp_pat["InsulaIg2L--Lingual_L_median"]
 
 rho, p = spearmanr(x, y)
 print(f"Spearman rho: {rho:.3f}")
@@ -431,6 +437,19 @@ plt.tight_layout()
 plt.show()
 
 
+model = smf.ols(
+    formula="""
+    Q("V5L--Cerebellum_6_R_median") ~
+    Q("InsulaIg2L--SupraMarginal_L_median") +
+    C(group) +
+    Q("InsulaIg2L--SupraMarginal_L_median"):C(group)
+    """,
+    data=tmp
+).fit()
+
+print(model.summary())
+
+
 # --- Look up distributions
 dist_vars = [
     "InsulaIg2L--Lingual_L_median",
@@ -444,3 +463,147 @@ for d in dist_vars:
     print(f"shapiro: {stat:.3f}, p = {p:.4f}")
     sns.displot(df_full, x=d, kind="kde")
     plt.show()
+
+
+# --- Correlate two brain variables
+tmp = df_full[[
+    "subject_num",
+    "group",
+    "age",
+    "ALQ_total",
+    "Niigata_total",
+    "InsulaIg2L--Lingual_L_median",
+    "InsulaIg2L--SupraMarginal_L_median",
+    "V5L--Cerebellum_6_R_median",
+    "V5R--Cerebellum_Crus1_L_median",
+]].copy()
+
+tmp_pat = tmp[tmp["group"] == "patient"].copy()
+tmp_con = tmp[tmp["group"] == "control"].copy()
+
+x_col = "V5R--Cerebellum_Crus1_L_median"
+y_col = "InsulaIg2L--Lingual_L_median"
+
+# --- Spearman correlations
+rho_all, p_all = spearmanr(tmp[x_col], tmp[y_col], nan_policy="omit")
+rho_pat, p_pat = spearmanr(tmp_pat[x_col], tmp_pat[y_col], nan_policy="omit")
+rho_con, p_con = spearmanr(tmp_con[x_col], tmp_con[y_col], nan_policy="omit")
+
+print(f"All:     Spearman rho = {rho_all:.3f}, p = {p_all:.4f}")
+print(f"Patient: Spearman rho = {rho_pat:.3f}, p = {p_pat:.4f}")
+print(f"Control: Spearman rho = {rho_con:.3f}, p = {p_con:.4f}")
+
+
+# --- Function for robust regression line
+def plot_rlm_line(ax, data, x_col, y_col, color, label, linestyle="-"):
+    data = data[[x_col, y_col]].dropna()
+
+    x = data[x_col]
+    y = data[y_col]
+
+    X = sm.add_constant(x)
+    model = sm.RLM(
+        y,
+        X,
+        M=sm.robust.norms.HuberT()
+    )
+    fit = model.fit()
+
+    intercept = fit.params["const"]
+    beta = fit.params[x_col]
+
+    x_line = np.linspace(x.min(), x.max(), 100)
+    y_line = intercept + beta * x_line
+
+    ax.plot(
+        x_line,
+        y_line,
+        color=color,
+        linewidth=2,
+        linestyle=linestyle,
+        label=None,
+    )
+
+    return intercept, beta
+
+
+# --- Plot
+plt.figure(figsize=(8, 7))
+
+ax = sns.scatterplot(
+    data=tmp,
+    x=x_col,
+    y=y_col,
+    hue="group",
+    palette=palette,
+    s=90,
+    alpha=0.7,
+    legend=False,
+)
+
+# Robust regression lines
+intercept_pat, beta_pat = plot_rlm_line(
+    ax, tmp_pat, x_col, y_col,
+    color=palette["patient"],
+    label="Patients",
+    linestyle="-"
+)
+
+intercept_con, beta_con = plot_rlm_line(
+    ax, tmp_con, x_col, y_col,
+    color=palette["control"],
+    label="Controls",
+    linestyle="-"
+)
+
+intercept_all, beta_all = plot_rlm_line(
+    ax, tmp, x_col, y_col,
+    color="black",
+    label="All",
+    linestyle="-"
+)
+
+print(f"All:     Intercept = {intercept_all:.3f}, Beta = {beta_all:.3f}")
+print(f"Patient: Intercept = {intercept_pat:.3f}, Beta = {beta_pat:.3f}")
+print(f"Control: Intercept = {intercept_con:.3f}, Beta = {beta_con:.3f}")
+
+# --- Textboxes
+text_all = f"All\nρ = {rho_all:.2f}\np = {p_all:.4f}"
+text_pat = f"Patients\nρ = {rho_pat:.2f}\np = {p_pat:.4f}"
+text_con = f"Controls\nρ = {rho_con:.2f}\np = {p_con:.4f}"
+
+ax.text(
+    0.50, 0.98,
+    text_all,
+    transform=ax.transAxes,
+    ha="left",
+    va="top",
+    fontsize=12,
+    bbox=dict(boxstyle="round", facecolor="white", alpha=0.85)
+)
+
+ax.text(
+    0.70, 0.98,
+    text_pat,
+    transform=ax.transAxes,
+    ha="left",
+    va="top",
+    fontsize=12,
+    color=palette["patient"],
+    bbox=dict(boxstyle="round", facecolor="white", alpha=0.85)
+)
+
+ax.text(
+    0.90, 0.98,
+    text_con,
+    transform=ax.transAxes,
+    ha="left",
+    va="top",
+    fontsize=12,
+    color=palette["control"],
+    bbox=dict(boxstyle="round", facecolor="white", alpha=0.85)
+)
+sns.despine()
+plt.tight_layout()
+plt.savefig("/data_wgs04/ag-sensomotorik/PPPD/analysis/group_level/plots/brain_corr_V5r_ling.svg")
+plt.show()
