@@ -261,7 +261,7 @@ if not (df_full["group_main"] == df_full["group_falff"]).all():
 df_full = df_full.drop(columns=["group_falff", "subject_id"])
 df_full = df_full.rename(columns={"group_main": "group"})
 
-df_full = df_full[df_full["subject_num"] != 40]
+# df_full = df_full[df_full["subject_num"] != 40]
 
 
 # --- Get dataframes split by group
@@ -271,15 +271,15 @@ df_con = df_full[df_full["group"] == "control"]
 
 # --- Define all correlation analyses
 brain_vars = [
-    "IPLPFcmL--Vermis_8_median",
-    "InsulaIg2L--Lingual_L_median",
-    "InsulaIg2L--SupraMarginal_L_median",
-    "InsulaOP3RAnat--Cerebellum_Crus2_L_median",
-    "OperculumOP1L--Vermis_8_median",
-    "OperculumOP1R--Vermis_9_median",
-    "V5L--Cerebellum_6_R_median",
-    "V5R--Cerebellum_Crus1_L_median",
-    "falff--Hippocampus_R_median"
+    "IPLPFcmL__Vermis_8_median",
+    "InsulaIg2L__Lingual_L_median",
+    "InsulaIg2L__SupraMarginal_L_median",
+    "InsulaOP3RAnat__Cerebellum_Crus2_L_median",
+    "OperculumOP1L__Vermis_8_median",
+    "OperculumOP1R__Vermis_9_median",
+    "V5L__Cerebellum_6_R_median",
+    "V5R__Cerebellum_Crus1_L_median",
+    "falff__Hippocampus_R_median"
 ]
 
 behavior_vars = [
@@ -325,15 +325,15 @@ results_df = pd.DataFrame(results)
 
 # --- New labels for all variables
 brain_labels = {
-    "IPLPFcmL--Vermis_8_median": "IPL–Verm",
-    "InsulaIg2L--Lingual_L_median": "Ig2-Ling",
-    "InsulaIg2L--SupraMarginal_L_median": "Ig2-Sup",
-    "InsulaOP3RAnat--Cerebellum_Crus2_L_median": "OP3–Crus2",
-    "OperculumOP1L--Vermis_8_median": "OP1L–Verm",
-    "OperculumOP1R--Vermis_9_median": "OP1R–Verm",
-    "V5L--Cerebellum_6_R_median": "V5L–Crus1",
-    "V5R--Cerebellum_Crus1_L_median": "V5R-Crus1",
-    "falff--Hippocampus_R_median": "falff-Hippo"
+    "IPLPFcmL__Vermis_8_median": "IPL–Verm",
+    "InsulaIg2L__Lingual_L_median": "Ig2-Ling",
+    "InsulaIg2L__SupraMarginal_L_median": "Ig2-Sup",
+    "InsulaOP3RAnat__Cerebellum_Crus2_L_median": "OP3–Crus2",
+    "OperculumOP1L__Vermis_8_median": "OP1L–Verm",
+    "OperculumOP1R__Vermis_9_median": "OP1R–Verm",
+    "V5L__Cerebellum_6_R_median": "V5L–Crus1",
+    "V5R__Cerebellum_Crus1_L_median": "V5R-Crus1",
+    "falff__Hippocampus_R_median": "falff-Hippo"
 }
 behavior_labels = {
     "age": "Age",
@@ -378,17 +378,17 @@ tmp = df_full[[
     "age",
     "ALQ_total",
     "Niigata_total",
-    "InsulaIg2L--Lingual_L_median",
-    "InsulaIg2L--SupraMarginal_L_median",
-    "V5L--Cerebellum_6_R_median",
-    "V5R--Cerebellum_Crus1_L_median",
+    "InsulaIg2L__Lingual_L_median",
+    "InsulaIg2L__SupraMarginal_L_median",
+    "V5L__Cerebellum_6_R_median",
+    "V5R__Cerebellum_Crus1_L_median",
 ]]
 
 tmp_pat = tmp[tmp["group"] == "patient"]
 tmp_con = tmp[tmp["group"] == "control"]
 
-x = tmp_pat["V5L--Cerebellum_6_R_median"]
-y = tmp_pat["InsulaIg2L--Lingual_L_median"]
+x = tmp_pat["V5L__Cerebellum_6_R_median"]
+y = tmp_pat["InsulaIg2L__Lingual_L_median"]
 
 rho, p = spearmanr(x, y)
 print(f"Spearman rho: {rho:.3f}")
@@ -403,7 +403,7 @@ model = sm.RLM(
 fit = model.fit()
 
 intercept = fit.params["const"]
-beta = fit.params["V5L--Cerebellum_6_R_median"]
+beta = fit.params["V5L__Cerebellum_6_R_median"]
 print(f"Intercept: {intercept:.3f}")
 print(f"Beta: {beta:.3f}")
 
@@ -439,10 +439,10 @@ plt.show()
 
 model = smf.ols(
     formula="""
-    Q("V5L--Cerebellum_6_R_median") ~
-    Q("InsulaIg2L--SupraMarginal_L_median") +
+    Q("V5L__Cerebellum_6_R_median") ~
+    Q("InsulaIg2L__SupraMarginal_L_median") +
     C(group) +
-    Q("InsulaIg2L--SupraMarginal_L_median"):C(group)
+    Q("InsulaIg2L__SupraMarginal_L_median"):C(group)
     """,
     data=tmp
 ).fit()
@@ -452,10 +452,10 @@ print(model.summary())
 
 # --- Look up distributions
 dist_vars = [
-    "InsulaIg2L--Lingual_L_median",
-    "InsulaIg2L--SupraMarginal_L_median",
-    "V5L--Cerebellum_6_R_median",
-    "V5R--Cerebellum_Crus1_L_median"
+    "InsulaIg2L__Lingual_L_median",
+    "InsulaIg2L__SupraMarginal_L_median",
+    "V5L__Cerebellum_6_R_median",
+    "V5R__Cerebellum_Crus1_L_median"
 ]
 
 for d in dist_vars:
@@ -472,17 +472,17 @@ tmp = df_full[[
     "age",
     "ALQ_total",
     "Niigata_total",
-    "InsulaIg2L--Lingual_L_median",
-    "InsulaIg2L--SupraMarginal_L_median",
-    "V5L--Cerebellum_6_R_median",
-    "V5R--Cerebellum_Crus1_L_median",
+    "InsulaIg2L__Lingual_L_median",
+    "InsulaIg2L__SupraMarginal_L_median",
+    "V5L__Cerebellum_6_R_median",
+    "V5R__Cerebellum_Crus1_L_median",
 ]].copy()
 
 tmp_pat = tmp[tmp["group"] == "patient"].copy()
 tmp_con = tmp[tmp["group"] == "control"].copy()
 
-x_col = "V5R--Cerebellum_Crus1_L_median"
-y_col = "InsulaIg2L--Lingual_L_median"
+x_col = "V5R__Cerebellum_Crus1_L_median"
+y_col = "InsulaIg2L__Lingual_L_median"
 
 # --- Spearman correlations
 rho_all, p_all = spearmanr(tmp[x_col], tmp[y_col], nan_policy="omit")

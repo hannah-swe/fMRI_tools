@@ -266,7 +266,7 @@ df = get_dataframe_for_connectivity_values(feature, group_comparison, pre_post_d
 
 # --- Get connectivity dataframe in wide format
 # make a unique cluster label for column names
-df["cluster_label"] = ("falff--"+ df["aal_label"].astype(str))
+df["cluster_label"] = ("falff__"+ df["aal_label"].astype(str))
 
 # convert long to wide
 connectivity_wide_df = df.pivot_table(index="subject_id", columns="cluster_label", values=["mean", "median"],

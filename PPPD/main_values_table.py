@@ -20,6 +20,12 @@ df2 = pd.read_excel(table_path_2, sheet_name="main_values")
 ehq1_df = pd.read_excel(table_path_1, sheet_name="EHQ")
 ehq2_df = pd.read_excel(table_path_2, sheet_name="EHQ")
 
+alq1_df = pd.read_excel(table_path_1, sheet_name="ALQ_subtype")
+alq2_df = pd.read_excel(table_path_2, sheet_name="ALQ_subtype")
+
+niigata1_df = pd.read_excel(table_path_1, sheet_name="Niigata")
+niigata2_df = pd.read_excel(table_path_2, sheet_name="Niigata")
+
 neo1_df = pd.read_excel(neo_path_1, sheet_name="Tabelle1")
 neo2_df = pd.read_excel(table_path_2, sheet_name="NEO_Auswertung")
 
@@ -38,6 +44,10 @@ df1 = df1[df1["SubjID"].isin(selected_subs)]
 df2 = df2[df2["SubjID"].isin(selected_subs)]
 ehq1_df = ehq1_df[ehq1_df["SubjID"].isin(selected_subs)]
 ehq2_df = ehq2_df[ehq2_df["SubjID"].isin(selected_subs)]
+alq1_df = alq1_df[alq1_df["SubjID"].isin(selected_subs)]
+alq2_df = alq2_df[alq2_df["SubjID"].isin(selected_subs)]
+niigata1_df = niigata1_df[niigata1_df["SubjID"].isin(selected_subs)]
+niigata2_df = niigata2_df[niigata2_df["SubjID"].isin(selected_subs)]
 neo1_df = neo1_df[neo1_df["SubjID"].isin(selected_subs)]
 neo2_df = neo2_df[neo2_df["SubjID"].isin(selected_subs)]
 
@@ -90,7 +100,55 @@ group_idx = df.columns.get_loc("Group")
 df.insert(group_idx + 1, "group", group_values)
 
 
-# --- Select columns to keep for neo df
+# --- Select columns to keep for alq visual subtype df
+columns_to_keep_alq = [
+    "SubjID",
+    "Summe Bewegung"
+]
+alq1_df = alq1_df[columns_to_keep_alq]
+alq2_df = alq2_df[columns_to_keep_alq]
+alq1_df = alq1_df.rename(columns={
+    "SubjID": "subject_num",
+    "Summe Bewegung": "ALQ_vis"
+})
+alq2_df = alq2_df.rename(columns={
+    "SubjID": "subject_num",
+    "Summe Bewegung": "ALQ_vis"
+})
+
+# --- Concatenate alq df
+alq_df = pd.concat([alq1_df, alq2_df], ignore_index=True)
+
+# --- Merge main values and alq df
+df = df.merge(alq_df, on="subject_num", how="left")
+df = df.replace(999, np.nan)
+
+
+# --- Select columns to keep for alq visual subtype df
+columns_to_keep_niigata = [
+    "SubjID",
+    "Score_3"
+]
+niigata1_df = niigata1_df[columns_to_keep_niigata]
+niigata2_df = niigata2_df[columns_to_keep_niigata]
+niigata1_df = niigata1_df.rename(columns={
+    "SubjID": "subject_num",
+    "Score_3": "Niigata_vis"
+})
+niigata2_df = niigata2_df.rename(columns={
+    "SubjID": "subject_num",
+    "Score_3": "Niigata_vis"
+})
+
+# --- Concatenate alq df
+niigata_df = pd.concat([niigata1_df, niigata2_df], ignore_index=True)
+
+# --- Merge main values and alq df
+df = df.merge(niigata_df, on="subject_num", how="left")
+df = df.replace(999, np.nan)
+
+
+# --- Select columns to keep for ehq df
 columns_to_keep_ehq = [
     "SubjID",
     "Händigkeit"

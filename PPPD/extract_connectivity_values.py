@@ -279,7 +279,7 @@ df = get_dataframe_for_connectivity_values(seeds, feature, group_comparison, pre
 # make a unique cluster label for column names
 df["cluster_label"] = (
     df["seed"].astype(str)
-    + "--"
+    + "__"
     + df["aal_label"].astype(str)
 )
 
