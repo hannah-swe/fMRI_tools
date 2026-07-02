@@ -206,7 +206,15 @@ plot_long_df["cluster_label"] = (
 
 # PLOT 2:
 # --- Boxplots with multiple FCs (defined in connectivity_plot_groups)
+# fixed panel width
+MAX_CLUSTERS = max(len(v) for v in connectivity_plot_groups.values())
+PANEL_WIDTH = 1.4 * MAX_CLUSTERS
+PANEL_HEIGHT = 3.5
+
 for plot_name, cluster_labels in connectivity_plot_groups.items():
+    # number of clusters
+    n_clusters = len(cluster_labels)
+
     # get cluster_label
     plot_df = plot_long_df[
         plot_long_df["cluster_label"].isin(cluster_labels)
@@ -227,7 +235,7 @@ for plot_name, cluster_labels in connectivity_plot_groups.items():
     plot_df["cluster_number"] = plot_df["cluster_label"].map(cluster_numbers)
 
     # plot
-    plt.figure(figsize=(1.7 * len(cluster_labels), 3.5))
+    fig, ax = plt.subplots(figsize=(PANEL_WIDTH, PANEL_HEIGHT))
     sns.boxplot(
         data=plot_df,
         x="cluster_number",
@@ -237,7 +245,9 @@ for plot_name, cluster_labels in connectivity_plot_groups.items():
         showfliers=False,
         linewidth=1.5,
         fill=False,
+        width=0.8,
         legend=False,
+        ax=ax
     )
     sns.stripplot(
         data=plot_df,
@@ -250,17 +260,22 @@ for plot_name, cluster_labels in connectivity_plot_groups.items():
         alpha=0.5,
         size=5,
         legend=False,
+        ax=ax
     )
-    ax = plt.gca()
-    # n_clusters = len(cluster_labels)
-    # ax.set_xlim(-0.6, n_clusters - 0.3)
+    # gleiche x-Achsenbreite für alle Panels
+    ax.set_xlim(-0.45, MAX_CLUSTERS - 0.5)
+
+    # nur vorhandene Cluster nummerieren
+    ax.set_xticks(range(n_clusters))
+    ax.set_xticklabels([str(i + 1) for i in range(n_clusters)])
 
     # significance brackets
     ymin, ymax = ax.get_ylim()
     ax.set_ylim(ymin, ymax + 0.5)
     y = ymax + 0.15  # Position der Klammer
-    h = 0.08  # Höhe der Klammer
+    h = 0.1  # Höhe der Klammer
     offset = 0.2  # Abstand der beiden Gruppen vom Zentrum
+
     for i, cluster_label in enumerate(cluster_labels):
         # get p-value
         p = df_full_long.loc[
