@@ -8,48 +8,51 @@ from templateflow import api as tf
 
 # Config
 tpl = "MNI152NLin2009cAsym"
-atlas = "HOCPAL"
 desc = "th25"
 res = 2
+OFFSET = 1  # TemplateFlow dseg_id = FSL xml_id + 1
 
 out_dir = Path("/data_wgs04/ag-sensomotorik/PPPD/masks/harvard_oxford_rois_tf")
 out_dir.mkdir(parents=True, exist_ok=True)
 
-xml_path = Path("/home/hannahschewe/nilearn_data/fsl/data/atlases/HarvardOxford-Cortical-Lateralized.xml")
-if not xml_path.exists():
-    raise FileNotFoundError(f"XML not found: {xml_path}")
 
-# dseg ids are 1..96, xml ids are 0..95
-OFFSET = 1  # dseg_id = xml_id + 1
+def load_atlas(atlas_name, xml_path):
+    xml_path = Path(xml_path)
+    if not xml_path.exists():
+        raise FileNotFoundError(f"XML not found: {xml_path}")
+
+    dseg_path = tf.get(
+        tpl,
+        resolution=res,
+        atlas=atlas_name,
+        desc=desc,
+        suffix="dseg"
+    )
+
+    atlas_img = nib.load(str(dseg_path))
+    atlas_data = atlas_img.get_fdata().astype(int)
+
+    root = ET.parse(str(xml_path)).getroot()
+    xml_id2name = {}
+
+    for lab in root.findall(".//label"):
+        if "index" not in lab.attrib:
+            continue
+        idx = int(lab.attrib["index"])
+        name = (lab.text or "").strip()
+        xml_id2name[idx] = name
+
+    name2xml = {v: k for k, v in xml_id2name.items()}
+
+    print("\nLoaded:", atlas_name)
+    print("  dseg:", dseg_path)
+    print("  shape:", atlas_data.shape)
+    print("  n labels:", len(name2xml))
+
+    return atlas_img, atlas_data, name2xml
 
 
-# Load dseg from TemplateFlow
-dseg_path = tf.get(tpl, resolution=res, atlas=atlas, desc=desc, suffix="dseg")
-atlas_img = nib.load(str(dseg_path))
-atlas_data = atlas_img.get_fdata().astype(int)
-
-print("Using dseg:", dseg_path)
-print("Atlas shape:", atlas_data.shape)
-
-
-# Parse XML (xml_id -> name)
-root = ET.parse(str(xml_path)).getroot()
-label_nodes = root.findall(".//label")
-
-xml_id2name = {}
-for lab in label_nodes:
-    if "index" not in lab.attrib:
-        continue
-    idx = int(lab.attrib["index"])
-    name = (lab.text or "").strip()
-    xml_id2name[idx] = name
-
-# Invert mapping: name -> xml_id (names are unique here)
-name2xml = {v: k for k, v in xml_id2name.items()}
-
-
-# Helper: save mask for one or multiple xml_ids
-def save_mask_from_xml_ids(xml_ids, filename):
+def save_mask(atlas_img, atlas_data, xml_ids, filename):
     dseg_ids = [i + OFFSET for i in xml_ids]
     mask = np.isin(atlas_data, dseg_ids).astype(np.uint8)
 
@@ -61,25 +64,55 @@ def save_mask_from_xml_ids(xml_ids, filename):
     print("  dseg_ids:", dseg_ids)
     print("  n_vox:", int(mask.sum()))
 
+    if int(mask.sum()) == 0:
+        print("  WARNING: mask is empty!")
 
-# Define ROIs by exact atlas names (no substring pitfalls)
+
+# -------------------------
+# Load cortical atlas
+# -------------------------
+cort_img, cort_data, cort_name2xml = load_atlas(
+    atlas_name="HOCPAL",
+    xml_path="/home/hannahschewe/nilearn_data/fsl/data/atlases/HarvardOxford-Cortical-Lateralized.xml"
+)
+
+# -------------------------
+# Load subcortical atlas
+# -------------------------
+sub_img, sub_data, sub_name2xml = load_atlas(
+    atlas_name="HOSPA",
+    xml_path="/home/hannahschewe/nilearn_data/fsl/data/atlases/HarvardOxford-Subcortical.xml"
+)
+
+
+# =========================
+# Cortical ROIs
+# =========================
+
 # Angular gyrus
-ang_L = name2xml["Left Angular Gyrus"]
-ang_R = name2xml["Right Angular Gyrus"]
+ang_L = cort_name2xml["Left Angular Gyrus"]
+ang_R = cort_name2xml["Right Angular Gyrus"]
 
-# Precuneus (note spelling: Precuneous)
-prec_L = name2xml["Left Precuneous Cortex"]
-prec_R = name2xml["Right Precuneous Cortex"]
+# Precuneus
+prec_L = cort_name2xml["Left Precuneous Cortex"]
+prec_R = cort_name2xml["Right Precuneous Cortex"]
 
-# mPFC proxy: Frontal Medial Cortex (combine L+R into one mask)
-mpfc_L = name2xml["Left Frontal Medial Cortex"]
-mpfc_R = name2xml["Right Frontal Medial Cortex"]
+# mPFC proxy
+mpfc_L = cort_name2xml["Left Frontal Medial Cortex"]
+mpfc_R = cort_name2xml["Right Frontal Medial Cortex"]
+
+save_mask(cort_img, cort_data, [prec_L, prec_R], "roi_precuneous.nii.gz")
+save_mask(cort_img, cort_data, [ang_L], "roi_angular_L.nii.gz")
+save_mask(cort_img, cort_data, [ang_R], "roi_angular_R.nii.gz")
+save_mask(cort_img, cort_data, [mpfc_L, mpfc_R], "roi_mpfc.nii.gz")
 
 
-# Save masks
-save_mask_from_xml_ids([prec_L, prec_R], "roi_precuneous.nii.gz")
+# =========================
+# Subcortical ROIs
+# =========================
 
-save_mask_from_xml_ids([ang_L],  "roi_angular_L.nii.gz")
-save_mask_from_xml_ids([ang_R],  "roi_angular_R.nii.gz")
+hipp_L = sub_name2xml["Left Hippocampus"]
+hipp_R = sub_name2xml["Right Hippocampus"]
 
-save_mask_from_xml_ids([mpfc_L, mpfc_R], "roi_mpfc.nii.gz")
+save_mask(sub_img, sub_data, [hipp_L], "roi_hippocampus_L.nii.gz")
+save_mask(sub_img, sub_data, [hipp_R], "roi_hippocampus_R.nii.gz")
