@@ -58,6 +58,8 @@ analysis:
     - "V6R"
     - "VermisUvulaL"
     - "VermisVII"
+    - "HippocampusL"
+    - "HippocampusR"
 
   # supported comparisons: "pat>HC", "HC>pat"
   group_comparison: "pat>HC"

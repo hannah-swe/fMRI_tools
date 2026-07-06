@@ -31,7 +31,8 @@ seeds = ["InsulaId1L"] # List of supported seeds:
                                     # "Precuneus",
                                     # "CSv", "CSvR",
                                     # "V1L", "V1R", "V2L", "V2R", "V5L", "V5R", "V6L", "V6R",
-                                    # "VermisUvulaL", "VermisVII"
+                                    # "VermisUvulaL", "VermisVII",
+                                    #  "HippocampusL", "HippocampusR"
                         # for feature = "falff" or "alff" do seed = None
 group_comparison = "pat>HC" # supported comparisons: "pat>HC", "HC>pat"
 # mask settings

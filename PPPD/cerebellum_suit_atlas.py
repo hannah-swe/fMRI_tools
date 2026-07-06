@@ -25,7 +25,8 @@ seeds = config["analysis"]["seeds"] # List of supported seeds:
                                     # "OperculumOP4L", "OperculumOP4R", "Precuneus",
                                     # "CSv", "CSvR",
                                     # "V1L", "V1R", "V2L", "V2R", "V5L", "V5R", "V6L", "V6R",
-                                    # "VermisUvulaL", "VermisVII"
+                                    # "VermisUvulaL", "VermisVII",
+                                    # "HippocampusL", "HippocampusR"
 group_comparison = config["analysis"]["group_comparison"] # supported comparisons: "pat>HC", "HC>pat"
 t_test_strategy = config["statistics"]["t_test_strategy"] # either two-sided or one-sided
 pre_post_diff = False

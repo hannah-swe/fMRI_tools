@@ -15,7 +15,8 @@ SUPPORTED_SEEDS_1 = ["InsulaId1L", "InsulaId1R", "InsulaIg1L", "InsulaIg1R", "In
 SUPPORTED_SEEDS_2 = ["CSv", "CSvR",
                      "V1L", "V1R", "V2L", "V2R", "V5L", "V5R", "V6L", "V6R",
                      "VermisUvulaL", "VermisVII"]
-SUPPORTED_SEEDS = SUPPORTED_SEEDS_1 + SUPPORTED_SEEDS_2
+SUPPORTED_SEEDS_3 = ["HippocampusL", "HippocampusR"]
+SUPPORTED_SEEDS = SUPPORTED_SEEDS_1 + SUPPORTED_SEEDS_2 + SUPPORTED_SEEDS_3
 SUPPORTED_MASKS = ["dmn", "vvn"]
 
 
@@ -93,6 +94,8 @@ def get_output_path(part, feature, seed=None):
             seed_folder = "seed1"
         elif seed in SUPPORTED_SEEDS_2:
             seed_folder = "seed2"
+        elif seed in SUPPORTED_SEEDS_3:
+            seed_folder = "seed3"
         else:
             raise ValueError(f"Unsupported seed: {seed}")
 

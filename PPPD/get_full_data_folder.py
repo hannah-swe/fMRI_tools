@@ -23,7 +23,12 @@ SEEDS_2 = [
     "VermisUvulaL", "VermisVII"
 ]
 
-seeds = SEEDS_1 + SEEDS_2
+# all seed names that are in seed-based connectivity analysis folder 3
+SEEDS_3 = [
+    "HippocampusL", "HippocampusR"
+]
+
+seeds = SEEDS_1 + SEEDS_2 + SEEDS_3
 
 
 # --- Function to get the full filename
@@ -40,10 +45,10 @@ def get_filename(subject_id, task, run, feature, seed=None):
 
 # --- Load config.yml and get analysis path
 PROJECT_DIR = Path.cwd()
-config_file = PROJECT_DIR / "PPPD" / "config.yml"
+config_file = PROJECT_DIR / "config.yml"
 with open(config_file, "r") as f:
     config = yaml.safe_load(f)
-analysis_path = Path(config["analysis_path"])
+analysis_path = config["paths"]["analysis_path"]
 analysis_path = str(analysis_path)
 
 
@@ -51,8 +56,10 @@ analysis_path = str(analysis_path)
 data_paths = {
     "seed1": os.path.join(analysis_path, "both_parts_seed1", "derivatives", "halfpipe"),
     "seed2": os.path.join(analysis_path, "both_parts_seed2", "derivatives", "halfpipe"),
+    "seed3": os.path.join(analysis_path, "both_parts_seed3", "derivatives", "halfpipe"),
     "falff": os.path.join(analysis_path, "both_parts_falff", "derivatives", "halfpipe"),
     "missing8": os.path.join(analysis_path, "missing8", "derivatives", "halfpipe"),
+    "missing8_2": os.path.join(analysis_path, "missing8_2", "derivatives", "halfpipe"),
 }
 
 
@@ -115,12 +122,17 @@ for s in subs:
                     filename = get_filename(subject_id, task, run, feature, seed)
 
                     if s >= 173:
-                        base_path = data_paths["missing8"]
+                        if seed in SEEDS_1 and SEEDS_2:
+                            base_path = data_paths["missing8"]
+                        if seed in SEEDS_3:
+                            base_path = data_paths["missing8_2"]
                     else:
                         if seed in SEEDS_1:
                             base_path = data_paths["seed1"]
                         elif seed in SEEDS_2:
                             base_path = data_paths["seed2"]
+                        elif seed in SEEDS_3:
+                            base_path = data_paths["seed3"]
                         else:
                             raise ValueError(f"Unknown seed: {seed}")
 
