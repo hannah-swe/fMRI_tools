@@ -61,12 +61,12 @@ for sector in circos.sectors:
     subregions = regions.loc[regions["network"] == network, "region"].tolist()
 
     # Äußerer Track: große Netzwerk-Sektoren
-    outer_track = sector.add_track((83, 100))
+    outer_track = sector.add_track((78, 100))
     # outer_track.axis(fc=network_colors.get(network, default_color), ec="none")
-    outer_track.text(network, color="black", size=16)
+    outer_track.text(network, color="black", size=22)
 
     # Innerer Track: einzelne Hirnregionen
-    inner_track = sector.add_track((70, 82))
+    inner_track = sector.add_track((62, 77))
     inner_track.axis( ec="black", lw=1.5) # fc=network_colors.get(network, default_color),
 
     for i, region in enumerate(subregions):
@@ -79,7 +79,7 @@ for sector in circos.sectors:
         inner_track.text(
             region,
             x=center,
-            size=16,
+            size=20,
             orientation="horizontal"
         )
 
