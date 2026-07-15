@@ -28,7 +28,12 @@ SEEDS_3 = [
     "HippocampusL", "HippocampusR"
 ]
 
-seeds = SEEDS_1 + SEEDS_2 + SEEDS_3
+# all seed names that are in seed-based connectivity analysis folder 4
+SEEDS_4 = [
+    "PrecuneusL", "PrecuneusR"
+]
+
+seeds = SEEDS_1 + SEEDS_2 + SEEDS_3 + SEEDS_4
 
 
 # --- Function to get the full filename
@@ -57,9 +62,11 @@ data_paths = {
     "seed1": os.path.join(analysis_path, "both_parts_seed1", "derivatives", "halfpipe"),
     "seed2": os.path.join(analysis_path, "both_parts_seed2", "derivatives", "halfpipe"),
     "seed3": os.path.join(analysis_path, "both_parts_seed3", "derivatives", "halfpipe"),
+    "seed4": os.path.join(analysis_path, "both_parts_seed4", "derivatives", "halfpipe"),
     "falff": os.path.join(analysis_path, "both_parts_falff", "derivatives", "halfpipe"),
     "missing8": os.path.join(analysis_path, "missing8", "derivatives", "halfpipe"),
     "missing8_2": os.path.join(analysis_path, "missing8_2", "derivatives", "halfpipe"),
+    "missing8_3": os.path.join(analysis_path, "missing8_3", "derivatives", "halfpipe"),
 }
 
 
@@ -124,8 +131,10 @@ for s in subs:
                     if s >= 173:
                         if seed in SEEDS_1 and SEEDS_2:
                             base_path = data_paths["missing8"]
-                        if seed in SEEDS_3:
+                        elif seed in SEEDS_3:
                             base_path = data_paths["missing8_2"]
+                        elif seed in SEEDS_4:
+                            base_path = data_paths["missing8_3"]
                     else:
                         if seed in SEEDS_1:
                             base_path = data_paths["seed1"]
@@ -133,6 +142,8 @@ for s in subs:
                             base_path = data_paths["seed2"]
                         elif seed in SEEDS_3:
                             base_path = data_paths["seed3"]
+                        elif seed in SEEDS_4:
+                            base_path = data_paths["seed4"]
                         else:
                             raise ValueError(f"Unknown seed: {seed}")
 
