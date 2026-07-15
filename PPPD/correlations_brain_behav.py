@@ -10,6 +10,8 @@ import seaborn as sns
 from scipy.stats import spearmanr, pearsonr, shapiro
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
+from statsmodels.stats.multitest import multipletests
+from itertools import combinations
 
 
 # Function to run spearman correlation and robust linear model
@@ -170,6 +172,365 @@ def plot_corr_from_results(brain_var, behavior_var, results_df, corr_plot_path):
     plt.tight_layout()
     plt.savefig(corr_plot_dir, dpi=300, bbox_inches="tight")
     plt.show()
+
+
+def run_brain_corr_matrix(df, brain_vars, group, min_n=3):
+    """
+    Berechnet alle eindeutigen paarweisen Spearman-Korrelationen zwischen
+    den angegebenen Brain-Variablen.
+
+    Zusätzlich wird ein robustes lineares Modell berechnet:
+        brain_var_y ~ brain_var_x
+    """
+    results = []
+
+    for brain_var_x, brain_var_y in combinations(brain_vars, 2):
+        data = df[[brain_var_x, brain_var_y]].dropna()
+
+        result = {
+            "brain_x": brain_var_x,
+            "brain_y": brain_var_y,
+            "group": group,
+            "rho": np.nan,
+            "p": np.nan,
+            "beta": np.nan,
+            "intercept": np.nan,
+            "n": len(data),
+            "status": "too_few_valid_cases"
+        }
+
+        if len(data) < min_n:
+            results.append(result)
+            continue
+
+        x = data[brain_var_x].astype(float)
+        y = data[brain_var_y].astype(float)
+
+        rho, p = spearmanr(x, y)
+
+        result["rho"] = rho
+        result["p"] = p
+        result["status"] = "ok"
+
+        X = sm.add_constant(x, has_constant="add")
+
+        try:
+            model = sm.RLM(
+                y,
+                X,
+                M=sm.robust.norms.HuberT()
+            )
+            fit = model.fit()
+
+            result["intercept"] = fit.params.iloc[0]
+            result["beta"] = fit.params.iloc[1]
+
+        except Exception:
+            result["status"] = "correlation_ok_rlm_failed"
+
+        results.append(result)
+
+    return pd.DataFrame(results)
+
+
+def plot_brain_corr_heatmap(
+    results_df,
+    brain_vars,
+    brain_labels,
+    group,
+    corr_plot_path,
+    significance_level=0.05,
+    p_column="p_fdr"
+):
+    """
+    Erstellt eine vollständige symmetrische Brain-Korrelationsmatrix.
+
+    p_column:
+        "p"     = unkorrigierte p-Werte
+        "p_fdr" = Benjamini-Hochberg-korrigierte p-Werte
+    """
+
+    os.makedirs(corr_plot_path, exist_ok=True)
+
+    group_results = results_df[
+        results_df["group"] == group
+    ].copy()
+
+    rho_matrix = pd.DataFrame(
+        np.eye(len(brain_vars)),
+        index=brain_vars,
+        columns=brain_vars,
+        dtype=float
+    )
+
+    p_matrix = pd.DataFrame(
+        np.nan,
+        index=brain_vars,
+        columns=brain_vars,
+        dtype=float
+    )
+
+    np.fill_diagonal(p_matrix.values, 0.0)
+
+    for _, row in group_results.iterrows():
+        brain_x = row["brain_x"]
+        brain_y = row["brain_y"]
+
+        rho_matrix.loc[brain_x, brain_y] = row["rho"]
+        rho_matrix.loc[brain_y, brain_x] = row["rho"]
+
+        p_matrix.loc[brain_x, brain_y] = row[p_column]
+        p_matrix.loc[brain_y, brain_x] = row[p_column]
+
+    display_labels = [
+        brain_labels.get(variable, variable)
+        for variable in brain_vars
+    ]
+
+    rho_plot = rho_matrix.copy()
+    p_plot = p_matrix.copy()
+
+    rho_plot.index = display_labels
+    rho_plot.columns = display_labels
+    p_plot.index = display_labels
+    p_plot.columns = display_labels
+
+    annotations = pd.DataFrame(
+        "",
+        index=rho_plot.index,
+        columns=rho_plot.columns
+    )
+
+    for i in range(len(brain_vars)):
+        for j in range(len(brain_vars)):
+            rho = rho_plot.iloc[i, j]
+            p_value = p_plot.iloc[i, j]
+
+            if pd.isna(rho):
+                continue
+
+            if i == j:
+                annotations.iloc[i, j] = "1.00"
+            else:
+                star = (
+                    "*"
+                    if pd.notna(p_value)
+                    and p_value < significance_level
+                    else ""
+                )
+
+                annotations.iloc[i, j] = (
+                    f"{rho:.2f}{star}\n"
+                    f"p={p_value:.3f}"
+                )
+
+    plt.figure(figsize=(12, 10))
+
+    ax = sns.heatmap(
+        rho_plot,
+        cmap="coolwarm",
+        center=0,
+        vmin=-1,
+        vmax=1,
+        annot=annotations,
+        fmt="",
+        linewidths=0.5,
+        square=True,
+        cbar_kws={"label": "Spearman ρ"}
+    )
+
+    correction_label = (
+        "FDR-BH corrected"
+        if p_column == "p_fdr"
+        else "uncorrected"
+    )
+
+    ax.set_title(
+        f"{group}: correlations between brain variables\n"
+        f"* {correction_label} p < {significance_level}"
+    )
+
+    ax.set_xlabel("")
+    ax.set_ylabel("")
+
+    plt.xticks(rotation=45, ha="right")
+    plt.yticks(rotation=0)
+    plt.tight_layout()
+
+    output_path = os.path.join(
+        corr_plot_path,
+        f"brain_correlation_matrix_{group}_{p_column}.png"
+    )
+
+    plt.savefig(
+        output_path,
+        dpi=300,
+        bbox_inches="tight"
+    )
+    plt.show()
+
+    return rho_matrix, p_matrix
+
+
+def plot_brain_corr_from_results(
+    brain_var_x,
+    brain_var_y,
+    results_df,
+    df_pat,
+    df_con,
+    brain_labels,
+    corr_plot_path,
+    palette
+):
+    """
+    Erstellt einen gemeinsamen Scatterplot für Patienten und Kontrollen.
+    Die robusten Regressionslinien werden aus results_df übernommen.
+    """
+
+    os.makedirs(corr_plot_path, exist_ok=True)
+
+    data_pat = df_pat[[brain_var_x, brain_var_y]].copy()
+    data_pat["group"] = "patient"
+
+    data_con = df_con[[brain_var_x, brain_var_y]].copy()
+    data_con["group"] = "control"
+
+    data = pd.concat(
+        [data_con, data_pat],
+        axis=0,
+        ignore_index=True
+    ).dropna(subset=[brain_var_x, brain_var_y])
+
+    if data.empty:
+        return
+
+    plt.figure(figsize=(9, 7))
+
+    ax = sns.scatterplot(
+        data=data,
+        x=brain_var_x,
+        y=brain_var_y,
+        hue="group",
+        palette=palette,
+        s=90,
+        alpha=0.7
+    )
+
+    stats_text = []
+
+    for group in ["control", "patient"]:
+        group_data = data[data["group"] == group]
+
+        result_row = results_df[
+            (results_df["brain_x"] == brain_var_x) &
+            (results_df["brain_y"] == brain_var_y) &
+            (results_df["group"] == group)
+        ]
+
+        if result_row.empty:
+            continue
+
+        result_row = result_row.iloc[0]
+
+        beta = result_row["beta"]
+        intercept = result_row["intercept"]
+        rho = result_row["rho"]
+        p = result_row["p"]
+        p_fdr = result_row["p_fdr"]
+        n = result_row["n"]
+
+        if (
+            pd.notna(beta)
+            and pd.notna(intercept)
+            and len(group_data) > 1
+            and group_data[brain_var_x].nunique() > 1
+        ):
+            x_line = np.linspace(
+                group_data[brain_var_x].min(),
+                group_data[brain_var_x].max(),
+                100
+            )
+
+            y_line = intercept + beta * x_line
+
+            ax.plot(
+                x_line,
+                y_line,
+                color=palette[group],
+                linewidth=3
+            )
+
+        if pd.notna(rho) and pd.notna(p):
+            stats_text.append(
+                f"{group}: ρ = {rho:.2f}, "
+                f"p = {p:.3f}, "
+                f"p-FDR = {p_fdr:.3f}, "
+                f"n = {n}"
+            )
+
+    x_label = brain_labels.get(brain_var_x, brain_var_x)
+    y_label = brain_labels.get(brain_var_y, brain_var_y)
+
+    ax.set_xlabel(x_label)
+    ax.set_ylabel(y_label)
+    ax.set_title("\n".join(stats_text))
+
+    ax.legend(
+        title="Group",
+        frameon=False
+    )
+
+    sns.despine()
+    plt.tight_layout()
+
+    output_path = os.path.join(
+        corr_plot_path,
+        f"brain_correlation_{brain_var_x}_{brain_var_y}.png"
+    )
+
+    plt.savefig(
+        output_path,
+        dpi=300,
+        bbox_inches="tight"
+    )
+    plt.show()
+
+
+def add_fdr_correction(
+    results_df,
+    p_column="p",
+    group_column="group",
+    alpha=0.05
+):
+    """
+    Führt eine Benjamini-Hochberg-FDR-Korrektur getrennt pro Gruppe durch.
+
+    Neue Spalten:
+        p_fdr: FDR-korrigierter p-Wert
+        significant_fdr: True, wenn p_fdr < alpha
+    """
+    results_df = results_df.copy()
+
+    results_df["p_fdr"] = np.nan
+    results_df["significant_fdr"] = False
+
+    for group, group_df in results_df.groupby(group_column):
+        valid_mask = group_df[p_column].notna()
+        valid_indices = group_df.index[valid_mask]
+
+        if len(valid_indices) == 0:
+            continue
+
+        reject, p_corrected, _, _ = multipletests(
+            results_df.loc[valid_indices, p_column],
+            alpha=alpha,
+            method="fdr_bh"
+        )
+
+        results_df.loc[valid_indices, "p_fdr"] = p_corrected
+        results_df.loc[valid_indices, "significant_fdr"] = reject
+
+    return results_df
 
 
 # --- Script configuration:
@@ -374,6 +735,108 @@ for _, row in sig_pairs.iterrows():
         row["behavior"],
         results_df,
         corr_plot_path,
+    )
+
+
+# Brain–Brain correlations
+brain_corr_plot_path = os.path.join(
+    corr_plot_path,
+    "brain_brain_correlations"
+)
+
+os.makedirs(brain_corr_plot_path, exist_ok=True)
+
+
+# --- Alle Brain–Brain-Korrelationen berechnen
+
+brain_results_pat = run_brain_corr_matrix(
+    df=df_pat,
+    brain_vars=brain_vars,
+    group="patient",
+    min_n=3
+)
+
+brain_results_con = run_brain_corr_matrix(
+    df=df_con,
+    brain_vars=brain_vars,
+    group="control",
+    min_n=3
+)
+
+brain_results_df = pd.concat(
+    [brain_results_pat, brain_results_con],
+    axis=0,
+    ignore_index=True
+)
+
+brain_results_df = add_fdr_correction(
+    results_df=brain_results_df,
+    p_column="p",
+    group_column="group",
+    alpha=0.05
+)
+
+# --- Ergebnistabelle speichern
+
+brain_results_path = os.path.join(
+    brain_corr_plot_path,
+    "brain_brain_correlation_results.csv"
+)
+
+brain_results_df.to_csv(
+    brain_results_path,
+    index=False
+)
+
+
+# --- Heatmaps erstellen
+sns.set_theme()
+sns.set_context()
+rho_brain_pat, p_fdr_brain_pat = plot_brain_corr_heatmap(
+    results_df=brain_results_df,
+    brain_vars=brain_vars,
+    brain_labels=brain_labels,
+    group="patient",
+    corr_plot_path=brain_corr_plot_path,
+    significance_level=0.05,
+    p_column="p_fdr"
+)
+
+rho_brain_con, p_fdr_brain_con = plot_brain_corr_heatmap(
+    results_df=brain_results_df,
+    brain_vars=brain_vars,
+    brain_labels=brain_labels,
+    group="control",
+    corr_plot_path=brain_corr_plot_path,
+    significance_level=0.05,
+    p_column="p_fdr"
+)
+
+
+# --- Alle Paare auswählen, die in mindestens einer Gruppe p < 0.05 sind
+significant_brain_results = brain_results_df[
+    brain_results_df["p_fdr"] < 0.05
+].copy()
+
+significant_brain_pairs = significant_brain_results[
+    ["brain_x", "brain_y"]
+].drop_duplicates()
+
+
+# --- Scatterplots der signifikanten Paare
+sns.set_theme(style="ticks")
+sns.set_context("talk")
+palette = {"control": "teal", "patient": "hotpink"}
+for _, row in significant_brain_pairs.iterrows():
+    plot_brain_corr_from_results(
+        brain_var_x=row["brain_x"],
+        brain_var_y=row["brain_y"],
+        results_df=brain_results_df,
+        df_pat=df_pat,
+        df_con=df_con,
+        brain_labels=brain_labels,
+        corr_plot_path=brain_corr_plot_path,
+        palette=palette
     )
 
 
