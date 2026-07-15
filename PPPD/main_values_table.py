@@ -203,8 +203,8 @@ postu2_df = postu2_df[postu2_df["SubjID"].isin(selected_subs)]
 
 
 # --- Select columns to keep for posturography data
-columns_to_keep_postu1 = ["SubjID", "SwaySpeed.1.0.0", "RatingSway.1.0.0"]
-columns_to_keep_postu2 = ["SubjID", "EOfirm", "RatingEOfirm"]
+columns_to_keep_postu1 = ["SubjID", "SwaySpeed.1.0.0", "SwaySpeed.0.0.0", "RatingSway.1.0.0", "RatingSway.0.0.0"]
+columns_to_keep_postu2 = ["SubjID", "EOfirm", "ECfirm", "RatingEOfirm", "RatingECfirm"]
 
 postu1_df = postu1_df[columns_to_keep_postu1]
 postu2_df = postu2_df[columns_to_keep_postu2]
@@ -212,12 +212,16 @@ postu2_df = postu2_df[columns_to_keep_postu2]
 postu1_df = postu1_df.rename(columns={
     "SubjID": "subject_num",
     "SwaySpeed.1.0.0": "EOfirm_speed",
+    "SwaySpeed.0.0.0": "ECfirm_speed",
     "RatingSway.1.0.0": "EOfirm_rating",
+    "RatingSway.0.0.0": "ECfirm_rating",
 })
 postu2_df = postu2_df.rename(columns={
     "SubjID": "subject_num",
     "EOfirm": "EOfirm_speed",
+    "ECfirm": "ECfirm_speed",
     "RatingEOfirm": "EOfirm_rating",
+    "RatingECfirm": "ECfirm_rating",
 })
 
 

@@ -67,7 +67,7 @@ def plot_corr_heatmap(results_df, group, corr_plot_path):
     rho_plot = rho_df.rename(index=behavior_labels, columns=brain_labels)
     p_plot = p_df.rename(index=behavior_labels, columns=brain_labels)
 
-    plt.figure(figsize=(8, 7))
+    plt.figure(figsize=(9, 8))
     ax = sns.heatmap(
         rho_plot,
         cmap="coolwarm",
@@ -104,7 +104,7 @@ def plot_corr_heatmap(results_df, group, corr_plot_path):
     plt.xticks(rotation=45, ha="right")
     plt.yticks(rotation=0)
     plt.tight_layout()
-    # plt.savefig(corr_plot_dir, dpi=300, bbox_inches="tight")
+    plt.savefig(corr_plot_dir, dpi=300, bbox_inches="tight")
     plt.show()
 
     return rho_df, p_df
@@ -168,7 +168,7 @@ def plot_corr_from_results(brain_var, behavior_var, results_df, corr_plot_path):
     )
     sns.despine()
     plt.tight_layout()
-    # plt.savefig(corr_plot_dir, dpi=300, bbox_inches="tight")
+    plt.savefig(corr_plot_dir, dpi=300, bbox_inches="tight")
     plt.show()
 
 
@@ -293,7 +293,9 @@ behavior_vars = [
     "HADS_D_total",
     "Neo.Skala_n",
     "EOfirm_speed",
+    "ECfirm_speed",
     "EOfirm_rating",
+    "ECfirm_rating",
 ]
 
 
@@ -345,12 +347,16 @@ behavior_labels = {
     "HADS_A_total": "HADS-A",
     "HADS_D_total": "HADS-D",
     "Neo.Skala_n": "Neo_N",
-    "EOfirm_speed": "Sway-speed",
-    "EOfirm_rating": "Sway-rating",
+    "EOfirm_speed": "Sway-speed EO",
+    "EOfirm_rating": "Sway-rating EO",
+    "ECfirm_speed": "Sway-speed EC",
+    "ECfirm_rating": "Sway-rating EC",
 }
 
 
 # --- Plot heatmap with all correlations
+sns.set_theme()
+sns.set_context()
 rho_pat, p_pat = plot_corr_heatmap(results_df, "patient", corr_plot_path)
 rho_con, p_con = plot_corr_heatmap(results_df, "control", corr_plot_path)
 
@@ -379,16 +385,16 @@ tmp = df_full[[
     "ALQ_total",
     "Niigata_total",
     "InsulaIg2L__Lingual_L_median",
-    "InsulaIg2L__SupraMarginal_L_median",
-    "V5L__Cerebellum_6_R_median",
-    "V5R__Cerebellum_Crus1_L_median",
+    "IPLPFcmL__Vermis_8_median",
+    "OperculumOP1L__Vermis_8_median",
+    "OperculumOP1R__Vermis_9_median",
 ]]
 
 tmp_pat = tmp[tmp["group"] == "patient"]
 tmp_con = tmp[tmp["group"] == "control"]
 
-x = tmp_pat["V5L__Cerebellum_6_R_median"]
-y = tmp_pat["InsulaIg2L__Lingual_L_median"]
+x = tmp_pat["InsulaIg2L__Lingual_L_median"]
+y = tmp_pat["IPLPFcmL__Vermis_8_median"]
 
 rho, p = spearmanr(x, y)
 print(f"Spearman rho: {rho:.3f}")
@@ -403,7 +409,7 @@ model = sm.RLM(
 fit = model.fit()
 
 intercept = fit.params["const"]
-beta = fit.params["V5L__Cerebellum_6_R_median"]
+beta = fit.params["InsulaIg2L__Lingual_L_median"]
 print(f"Intercept: {intercept:.3f}")
 print(f"Beta: {beta:.3f}")
 
@@ -472,17 +478,17 @@ tmp = df_full[[
     "age",
     "ALQ_total",
     "Niigata_total",
-    "InsulaIg2L__Lingual_L_median",
     "InsulaIg2L__SupraMarginal_L_median",
-    "V5L__Cerebellum_6_R_median",
-    "V5R__Cerebellum_Crus1_L_median",
+    "IPLPFcmL__Vermis_8_median",
+    "OperculumOP1L__Vermis_8_median",
+    "OperculumOP1R__Vermis_9_median",
 ]].copy()
 
 tmp_pat = tmp[tmp["group"] == "patient"].copy()
 tmp_con = tmp[tmp["group"] == "control"].copy()
 
-x_col = "V5R__Cerebellum_Crus1_L_median"
-y_col = "InsulaIg2L__Lingual_L_median"
+x_col = "InsulaIg2L__SupraMarginal_L_median"
+y_col = "OperculumOP1R__Vermis_9_median"
 
 # --- Spearman correlations
 rho_all, p_all = spearmanr(tmp[x_col], tmp[y_col], nan_policy="omit")
@@ -605,5 +611,5 @@ ax.text(
 )
 sns.despine()
 plt.tight_layout()
-plt.savefig("/data_wgs04/ag-sensomotorik/PPPD/analysis/group_level/plots/brain_corr_V5r_ling.svg")
+# plt.savefig("/data_wgs04/ag-sensomotorik/PPPD/analysis/group_level/plots/brain_corr_V5r_ling.svg")
 plt.show()
