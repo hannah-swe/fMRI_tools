@@ -60,6 +60,8 @@ analysis:
     - "VermisVII"
     - "HippocampusL"
     - "HippocampusR"
+    - "PrecuneusL"
+    - "PrecuneusR"
 
   # supported comparisons: "pat>HC", "HC>pat"
   group_comparison: "pat>HC"
