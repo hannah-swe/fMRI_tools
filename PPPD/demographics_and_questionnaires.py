@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import scipy.stats as stats
-from scipy.stats import ttest_ind, mannwhitneyu, shapiro
+from scipy.stats import ttest_ind, mannwhitneyu, shapiro, spearmanr
 
 
 def normality_check(
@@ -59,7 +59,7 @@ def normality_check(
     return pd.DataFrame(results)
 
 
-def mwu_report(df, variable, group_col="group", group1="patient", group2="control"):
+def mwu_report(df, variable, group_col="group", group1="control", group2="patient"):
 
     # descriptive statistics
     descr = df.groupby(group_col)[variable].describe()
@@ -139,30 +139,83 @@ df.groupby("group")["Händigkeit"].value_counts()
 
 
 # --- ALQ descriptive stats and mann-whitney-u-test
+_ = normality_check(df, "ALQ_total")
 _ = mwu_report(df, "ALQ_total")
 
 
 # --- NPQ descriptive stats and mann-whitney-u-test
+_ = normality_check(df, "Niigata_total")
 _ = mwu_report(df, "Niigata_total")
 
 
 # --- HADS_A descriptive stats and mann-whitney-u-test
+_ = normality_check(df, "HADS_A_total")
 _ = mwu_report(df, "HADS_A_total")
 
 
 # --- HADS_D descriptive stats and mann-whitney-u-test
+_ = normality_check(df, "HADS_D_total")
 _ = mwu_report(df, "HADS_D_total")
 
 
 # --- MSSQ descriptive stats and mann-whitney-u-test
+_ = normality_check(df, "MSSQ_raw")
 _ = mwu_report(df, "MSSQ_raw")
 
+
 # --- Neuroticism descriptive stats and mann-whitney-u-test
+_ = normality_check(df, "Neo.Skala_n")
 _ = mwu_report(df, "Neo.Skala_n")
 patients = df.loc[df['group'] == 'patient', 'Neo.Skala_n'].dropna()
 controls = df.loc[df['group'] == 'control', 'Neo.Skala_n'].dropna()
-t, p = ttest_ind(patients, controls, equal_var=False)  # Welch-t-Test
-print(f"t = {t:.3f}, p = {p:.3f}")
+result = ttest_ind(controls, patients, equal_var=False)  # Welch-t-Test
+print(f"t = {result.statistic:.3f}")
+print(f"df = {result.df:.3f}")
+print(f"p = {result.pvalue:.3f}")
+
+
+# --- Extraversion descriptive stats and mann-whitney-u-test
+_ = normality_check(df, "Neo.Skala_e")
+_ = mwu_report(df, "Neo.Skala_e")
+patients = df.loc[df['group'] == 'patient', 'Neo.Skala_e'].dropna()
+controls = df.loc[df['group'] == 'control', 'Neo.Skala_e'].dropna()
+result = ttest_ind(controls, patients, equal_var=False)  # Welch-t-Test
+print(f"t = {result.statistic:.3f}")
+print(f"df = {result.df:.3f}")
+print(f"p = {result.pvalue:.3f}")
+
+
+# --- Openness descriptive stats and mann-whitney-u-test
+_ = normality_check(df, "Neo.Skala_o")
+_ = mwu_report(df, "Neo.Skala_o")
+patients = df.loc[df['group'] == 'patient', 'Neo.Skala_o'].dropna()
+controls = df.loc[df['group'] == 'control', 'Neo.Skala_o'].dropna()
+result = ttest_ind(controls, patients, equal_var=False)  # Welch-t-Test
+print(f"t = {result.statistic:.3f}")
+print(f"df = {result.df:.3f}")
+print(f"p = {result.pvalue:.3f}")
+
+
+# --- Agreeableness descriptive stats and mann-whitney-u-test
+_ = normality_check(df, "Neo.Skala_v")
+_ = mwu_report(df, "Neo.Skala_v")
+patients = df.loc[df['group'] == 'patient', 'Neo.Skala_v'].dropna()
+controls = df.loc[df['group'] == 'control', 'Neo.Skala_v'].dropna()
+result = ttest_ind(controls, patients, equal_var=False)  # Welch-t-Test
+print(f"t = {result.statistic:.3f}")
+print(f"df = {result.df:.3f}")
+print(f"p = {result.pvalue:.3f}")
+
+
+# --- Conscientiousness descriptive stats and mann-whitney-u-test
+_ = normality_check(df, "Neo.Skala_g")
+_ = mwu_report(df, "Neo.Skala_g")
+patients = df.loc[df['group'] == 'patient', 'Neo.Skala_g'].dropna()
+controls = df.loc[df['group'] == 'control', 'Neo.Skala_g'].dropna()
+result = ttest_ind(controls, patients, equal_var=False)  # Welch-t-Test
+print(f"t = {result.statistic:.3f}")
+print(f"df = {result.df:.3f}")
+print(f"p = {result.pvalue:.3f}")
 
 
 # --- GVS threshold normality check

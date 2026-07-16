@@ -36,7 +36,13 @@ selected_subs = get_selected_subject_list(part, subs, subjects_to_exclude)
 
 # --- Change subjID in neo1_df
 neo1_df["SubjID"] = neo1_df["SubjID"].str[-2:].astype(int)
-neo1_df = neo1_df.rename(columns={"NEO.Skala_n": "Neo.Skala_n"})
+neo1_df = neo1_df.rename(columns={
+    "NEO.Skala_n": "Neo.Skala_n",
+    "NEO.Skala_e": "Neo.Skala_e",
+    "NEO.Skala_o": "Neo.Skala_o",
+    "NEO.Skala_v": "Neo.Skala_v",
+    "NEO.Skala_g": "Neo.Skala_g",
+})
 
 
 # --- Keep only selected subjects
@@ -171,7 +177,11 @@ df = df.replace(999, np.nan)
 # --- Select columns to keep for neo df
 columns_to_keep_neo = [
     "SubjID",
-    "Neo.Skala_n"
+    "Neo.Skala_n",
+    "Neo.Skala_e",
+    "Neo.Skala_o",
+    "Neo.Skala_v",
+    "Neo.Skala_g",
 ]
 neo1_df = neo1_df[columns_to_keep_neo]
 neo2_df = neo2_df[columns_to_keep_neo]
