@@ -119,6 +119,24 @@ def format_p_value(p_value):
 
     return f"{p_value:.3f}"
 
+def get_significance_stars(p_value):
+    """
+    Returns significance stars based on the supplied p-value.
+    """
+    if pd.isna(p_value):
+        return ""
+
+    if p_value < 0.001:
+        return "***"
+
+    if p_value < 0.01:
+        return "**"
+
+    if p_value < 0.05:
+        return "*"
+
+    return ""
+
 
 # --- Data loading and merging
 def merge_feature_table(
@@ -322,6 +340,55 @@ def calculate_spearman_rlm(
     return result
 
 
+def add_bonferroni_per_behavior(
+    results_df,
+    group_column="group",
+    behavior_column="behavior",
+    p_column="p",
+    alpha=ALPHA,
+):
+    """
+    Bonferroni correction separately
+
+        - for each group
+        - for each behavioral variable
+
+    i.e. one correction over all brain variables belonging to one
+    behavioral variable.
+
+    New columns
+    -----------
+    p_bonf
+    significant_bonf
+    """
+
+    corrected_df = results_df.copy()
+
+    corrected_df["p_bonf"] = np.nan
+    corrected_df["significant_bonf"] = False
+
+    for (group, behavior), subset in corrected_df.groupby(
+        [group_column, behavior_column],
+        sort=False,
+    ):
+
+        valid_idx = subset.index[subset[p_column].notna()]
+
+        if len(valid_idx) == 0:
+            continue
+
+        reject, p_corrected, _, _ = multipletests(
+            corrected_df.loc[valid_idx, p_column],
+            alpha=alpha,
+            method="bonferroni",
+        )
+
+        corrected_df.loc[valid_idx, "p_bonf"] = p_corrected
+        corrected_df.loc[valid_idx, "significant_bonf"] = reject
+
+    return corrected_df
+
+
 def add_fdr_correction(
     results_df,
     group_column="group",
@@ -392,6 +459,10 @@ def calculate_brain_behavior_correlations(
 
         for brain_var in brain_vars:
             for behavior_var in behavior_vars:
+
+                if behavior_var == "EOfirm_speed":
+                    df_group = df_group[df_group["subject_num"] != 37]
+
                 result = calculate_spearman_rlm(
                     df=df_group,
                     x_var=behavior_var,
@@ -408,12 +479,15 @@ def calculate_brain_behavior_correlations(
 
     results_df = pd.DataFrame(results)
 
-    return add_fdr_correction(
-        results_df=results_df,
+    results_df = add_bonferroni_per_behavior(
+        results_df,
         group_column="group",
+        behavior_column="behavior",
         p_column="p",
         alpha=ALPHA,
     )
+
+    return results_df
 
 
 def create_brain_behavior_matrices(
@@ -439,10 +513,10 @@ def create_brain_behavior_matrices(
         values="p",
     )
 
-    p_fdr_matrix = group_results.pivot(
+    p_bonf_matrix = group_results.pivot(
         index="behavior",
         columns="brain",
-        values="p_fdr",
+        values="p_bonf",
     )
 
     rho_matrix = rho_matrix.reindex(
@@ -455,12 +529,12 @@ def create_brain_behavior_matrices(
         columns=BRAIN_VARS,
     )
 
-    p_fdr_matrix = p_fdr_matrix.reindex(
+    p_bonf_matrix = p_bonf_matrix.reindex(
         index=BEHAVIOR_VARS,
         columns=BRAIN_VARS,
     )
 
-    return rho_matrix, p_matrix, p_fdr_matrix
+    return rho_matrix, p_matrix, p_bonf_matrix
 
 
 def plot_brain_behavior_heatmap(
@@ -482,7 +556,7 @@ def plot_brain_behavior_heatmap(
     (
         rho_matrix,
         p_matrix,
-        p_fdr_matrix,
+        p_bonf_matrix,
     ) = create_brain_behavior_matrices(
         results_df=results_df,
         group=group,
@@ -493,7 +567,7 @@ def plot_brain_behavior_heatmap(
         columns=BRAIN_LABELS,
     )
 
-    p_fdr_plot = p_fdr_matrix.rename(
+    p_bonf_plot = p_bonf_matrix.rename(
         index=BEHAVIOR_LABELS,
         columns=BRAIN_LABELS,
     )
@@ -512,19 +586,19 @@ def plot_brain_behavior_heatmap(
         cbar_kws={"label": "Spearman ρ"},
     )
 
-    for row_index in range(p_fdr_plot.shape[0]):
-        for column_index in range(p_fdr_plot.shape[1]):
-            p_fdr = p_fdr_plot.iloc[
+    for row_index in range(p_bonf_plot.shape[0]):
+        for column_index in range(p_bonf_plot.shape[1]):
+            p_bonf = p_bonf_plot.iloc[
                 row_index,
                 column_index,
             ]
 
-            if pd.isna(p_fdr):
+            if pd.isna(p_bonf):
                 continue
 
-            is_significant = p_fdr < ALPHA
+            is_significant = p_bonf < ALPHA
 
-            annotation = format_p_value(p_fdr)
+            annotation = format_p_value(p_bonf)
 
             if is_significant:
                 annotation = f"{annotation}*"
@@ -542,8 +616,8 @@ def plot_brain_behavior_heatmap(
 
     ax.set_title(
         f"{group}: brain–behavior correlations\n"
-        f"p-values FDR-corrected; "
-        f"* p-FDR < {ALPHA}"
+        f"p-values Bonferroni-corrected; "
+        f"* p-Bonf < {ALPHA}"
     )
 
     ax.set_xlabel("Brain variable")
@@ -557,12 +631,12 @@ def plot_brain_behavior_heatmap(
 
     output_path = os.path.join(
         output_dir,
-        f"brain_behavior_heatmap_{group}_fdr.png",
+        f"brain_behavior_heatmap_{group}_bonf.png",
     )
 
     save_and_show_figure(output_path)
 
-    return rho_matrix, p_matrix, p_fdr_matrix
+    return rho_matrix, p_matrix, p_bonf_matrix
 
 
 def plot_brain_behavior_scatter(
@@ -591,6 +665,9 @@ def plot_brain_behavior_scatter(
     ).dropna(
         subset=[brain_var, behavior_var]
     )
+
+    if behavior_var == "EOfirm_speed":
+        plot_df = plot_df[plot_df["EOfirm_speed"] < 60]
 
     if plot_df.empty:
         return
@@ -628,7 +705,7 @@ def plot_brain_behavior_scatter(
 
         rho = result["rho"]
         p_value = result["p"]
-        p_fdr = result["p_fdr"]
+        p_bonf = result["p_bonf"]
         beta = result["beta"]
         intercept = result["intercept"]
         n = int(result["n"])
@@ -658,7 +735,7 @@ def plot_brain_behavior_scatter(
             f"{group}: "
             f"ρ = {rho:.2f}, "
             f"p = {format_p_value(p_value)}, "
-            f"p-FDR = {format_p_value(p_fdr)}, "
+            f"p-Bonf = {format_p_value(p_bonf)}"
         )
 
     ax.set_xlabel(
@@ -799,11 +876,22 @@ def plot_brain_brain_heatmap(
     output_dir,
 ):
     """
-    Plots the complete symmetric brain–brain correlation matrix.
-    Each cell contains:
+    Plots the lower half of the brain–brain correlation matrix.
+
+    Each visible cell contains:
         Spearman rho
-        FDR-corrected p-value
-    An asterisk marks p_fdr < ALPHA.
+        Significance stars based on FDR-corrected p-values
+
+    Significance levels:
+        *   p_fdr < 0.05
+        **  p_fdr < 0.01
+        *** p_fdr < 0.001
+
+    Returns:
+        rho_matrix
+        p_matrix
+        p_fdr_matrix
+        matrix_values_df
     """
     (
         rho_matrix,
@@ -815,10 +903,7 @@ def plot_brain_brain_heatmap(
     )
 
     display_labels = [
-        BRAIN_LABELS.get(
-            variable,
-            variable,
-        )
+        BRAIN_LABELS.get(variable, variable)
         for variable in BRAIN_VARS
     ]
 
@@ -837,8 +922,13 @@ def plot_brain_brain_heatmap(
         columns=display_labels,
     )
 
+    # Nur unteres Dreieck ohne Diagonale annotieren
     for row_index in range(len(BRAIN_VARS)):
         for column_index in range(len(BRAIN_VARS)):
+
+            if row_index <= column_index:
+                continue
+
             rho = rho_plot.iloc[
                 row_index,
                 column_index,
@@ -852,32 +942,29 @@ def plot_brain_brain_heatmap(
             if pd.isna(rho):
                 continue
 
-            if row_index == column_index:
-                annotations.iloc[
-                    row_index,
-                    column_index,
-                ] = "1.00"
-
-                continue
-
-            significance_symbol = (
-                "*"
-                if pd.notna(p_fdr) and p_fdr < ALPHA
-                else ""
+            significance_stars = get_significance_stars(
+                p_fdr
             )
 
             annotations.iloc[
                 row_index,
                 column_index,
-            ] = (
-                f"{rho:.2f}{significance_symbol}\n"
-                f"p={format_p_value(p_fdr)}"
-            )
+            ] = f"{rho:.2f}{significance_stars}"
+
+    # Oberes Dreieck einschließlich Diagonale ausblenden
+    mask = np.triu(
+        np.ones_like(
+            rho_plot,
+            dtype=bool,
+        ),
+        k=0,
+    )
 
     plt.figure(figsize=(12, 10))
 
     ax = sns.heatmap(
         rho_plot,
+        mask=mask,
         cmap="coolwarm",
         center=0,
         vmin=-1,
@@ -886,13 +973,9 @@ def plot_brain_brain_heatmap(
         fmt="",
         linewidths=0.5,
         square=True,
-        cbar_kws={"label": "Spearman ρ"},
-    )
-
-    ax.set_title(
-        f"{group.capitalize()}: brain–brain correlations\n"
-        f"p-values FDR-corrected; "
-        f"* p-FDR < {ALPHA}"
+        cbar_kws={
+            "label": "Spearman ρ",
+        },
     )
 
     ax.set_xlabel("")
@@ -906,12 +989,62 @@ def plot_brain_brain_heatmap(
 
     output_path = os.path.join(
         output_dir,
-        f"brain_brain_heatmap_{group}_fdr.png",
+        f"brain_brain_heatmap_{group}_fdr.svg",
     )
 
     save_and_show_figure(output_path)
 
-    return rho_matrix, p_matrix, p_fdr_matrix
+    # Übersichtlicher DataFrame mit einer Zeile pro Korrelation
+    matrix_values_df = (
+        results_df.loc[
+            results_df["group"] == group,
+            [
+                "brain_x",
+                "brain_y",
+                "rho",
+                "p",
+                "p_fdr",
+            ],
+        ]
+        .copy()
+        .reset_index(drop=True)
+    )
+
+    matrix_values_df["brain_x_label"] = (
+        matrix_values_df["brain_x"].map(BRAIN_LABELS)
+        .fillna(matrix_values_df["brain_x"])
+    )
+
+    matrix_values_df["brain_y_label"] = (
+        matrix_values_df["brain_y"].map(BRAIN_LABELS)
+        .fillna(matrix_values_df["brain_y"])
+    )
+
+    matrix_values_df["significance"] = (
+        matrix_values_df["p_fdr"].apply(
+            get_significance_stars
+        )
+    )
+
+    matrix_values_df = matrix_values_df[
+        [
+            "brain_x",
+            "brain_x_label",
+            "brain_y",
+            "brain_y_label",
+            "rho",
+            "p",
+            "p_fdr",
+            "significance",
+        ]
+    ]
+
+    return (
+        rho_matrix,
+        p_matrix,
+        p_fdr_matrix,
+        matrix_values_df,
+    )
 
 
 def plot_brain_brain_scatter(
@@ -1042,165 +1175,168 @@ def plot_brain_brain_scatter(
 
 
 # --- Main analysis
-def main():
-    # Load and prepare data
-    df_full = load_analysis_data()
+# Load and prepare data
+df_full = load_analysis_data()
 
-    group_data = {
-        group: df_full.loc[
-            df_full["group"] == group
-        ].copy()
-        for group in GROUPS
-    }
+group_data = {
+    group: df_full.loc[
+        df_full["group"] == group
+    ].copy()
+    for group in GROUPS
+}
 
-    output_root = os.path.join(
-        get_connectivity_path(),
-        "brain_correlations",
+output_root = os.path.join(
+    get_connectivity_path(),
+    "brain_correlations",
+)
+
+brain_behavior_output_dir = os.path.join(
+    output_root,
+    "brain_behavior",
+)
+
+brain_brain_output_dir = os.path.join(
+    output_root,
+    "brain_brain",
+)
+
+os.makedirs(
+    brain_behavior_output_dir,
+    exist_ok=True,
+)
+
+os.makedirs(
+    brain_brain_output_dir,
+    exist_ok=True,
+)
+
+# Calculate all correlations
+brain_behavior_results = (
+    calculate_brain_behavior_correlations(
+        group_data=group_data,
+        brain_vars=BRAIN_VARS,
+        behavior_vars=BEHAVIOR_VARS,
     )
+)
 
-    brain_behavior_output_dir = os.path.join(
-        output_root,
-        "brain_behavior",
-    )
-
-    brain_brain_output_dir = os.path.join(
-        output_root,
-        "brain_brain",
-    )
-
-    os.makedirs(
+brain_behavior_results.to_csv(
+    os.path.join(
         brain_behavior_output_dir,
-        exist_ok=True,
-    )
+        "brain_behavior_correlation_results.csv",
+    ),
+    index=False,
+)
 
-    os.makedirs(
+brain_brain_results = (
+    calculate_brain_brain_correlations(
+        group_data=group_data,
+        brain_vars=BRAIN_VARS,
+    )
+)
+
+brain_brain_results.to_csv(
+    os.path.join(
         brain_brain_output_dir,
-        exist_ok=True,
+        "brain_brain_correlation_results.csv",
+    ),
+    index=False,
+)
+
+# Plot heatmaps per group
+sns.set_style()
+sns.set_context()
+for group in GROUPS:
+    plot_brain_behavior_heatmap(
+        results_df=brain_behavior_results,
+        group=group,
+        output_dir=brain_behavior_output_dir,
     )
 
-    # Calculate all correlations
-    brain_behavior_results = (
-        calculate_brain_behavior_correlations(
-            group_data=group_data,
-            brain_vars=BRAIN_VARS,
-            behavior_vars=BEHAVIOR_VARS,
-        )
+for group in GROUPS:
+    plot_brain_brain_heatmap(
+        results_df=brain_brain_results,
+        group=group,
+        output_dir=brain_brain_output_dir,
     )
 
-    brain_behavior_results.to_csv(
-        os.path.join(
-            brain_behavior_output_dir,
-            "brain_behavior_correlation_results.csv",
-        ),
-        index=False,
+
+# Plot scatterplots
+significant_brain_behavior_pairs = (
+    brain_behavior_results.loc[
+        brain_behavior_results["significant_bonf"],
+        ["brain", "behavior"],
+    ]
+    .drop_duplicates()
+)
+
+sns.set_theme(
+    style="ticks",
+    context="talk",
+)
+for _, pair in significant_brain_behavior_pairs.iterrows():
+    plot_brain_behavior_scatter(
+        brain_var=pair["brain"],
+        behavior_var=pair["behavior"],
+        results_df=brain_behavior_results,
+        group_data=group_data,
+        output_dir=brain_behavior_output_dir,
     )
 
-    brain_brain_results = (
-        calculate_brain_brain_correlations(
-            group_data=group_data,
-            brain_vars=BRAIN_VARS,
-        )
+plot_brain_behavior_scatter(
+    brain_var="IPLPFcmL__Vermis_8_median",
+    behavior_var="EOfirm_speed",
+    results_df=brain_behavior_results,
+    group_data=group_data,
+    output_dir=brain_behavior_output_dir,
+)
+
+brain_brain_pairs = (
+    brain_brain_results[
+        ["brain_x", "brain_y"]
+    ]
+    .drop_duplicates()
+)
+
+for _, pair in brain_brain_pairs.iterrows():
+    plot_brain_brain_scatter(
+        brain_x=pair["brain_x"],
+        brain_y=pair["brain_y"],
+        results_df=brain_brain_results,
+        group_data=group_data,
+        output_dir=brain_brain_output_dir,
     )
 
-    brain_brain_results.to_csv(
-        os.path.join(
-            brain_brain_output_dir,
-            "brain_brain_correlation_results.csv",
-        ),
-        index=False,
+# Console summary
+print("\nBrain–behavior correlations")
+print("---------------------------")
+
+for group in GROUPS:
+    group_results = brain_behavior_results.loc[
+        brain_behavior_results["group"] == group
+    ]
+
+    n_tests = group_results["p"].notna().sum()
+    n_significant = group_results["significant_bonf"].sum()
+
+    print(
+        f"{group.capitalize()}: "
+        f"{n_significant} of {n_tests} valid tests "
+        f"significant after FDR-BH correction."
     )
 
-    # Plot heatmaps per group
-    sns.set_style()
-    sns.set_context()
-    for group in GROUPS:
-        plot_brain_behavior_heatmap(
-            results_df=brain_behavior_results,
-            group=group,
-            output_dir=brain_behavior_output_dir,
-        )
+print("\nBrain–brain correlations")
+print("------------------------")
 
-    for group in GROUPS:
-        plot_brain_brain_heatmap(
-            results_df=brain_brain_results,
-            group=group,
-            output_dir=brain_brain_output_dir,
-        )
+for group in GROUPS:
+    group_results = brain_brain_results.loc[
+        brain_brain_results["group"] == group
+    ]
 
+    n_tests = group_results["p"].notna().sum()
+    n_significant = group_results["significant_fdr"].sum()
 
-    # Plot scatterplots
-    significant_brain_behavior_pairs = (
-        brain_behavior_results.loc[
-            brain_behavior_results["significant_fdr"],
-            ["brain", "behavior"],
-        ]
-        .drop_duplicates()
+    print(
+        f"{group.capitalize()}: "
+        f"{n_significant} of {n_tests} valid tests "
+        f"significant after FDR-BH correction."
     )
-
-    sns.set_theme(
-        style="ticks",
-        context="talk",
-    )
-    for _, pair in significant_brain_behavior_pairs.iterrows():
-        plot_brain_behavior_scatter(
-            brain_var=pair["brain"],
-            behavior_var=pair["behavior"],
-            results_df=brain_behavior_results,
-            group_data=group_data,
-            output_dir=brain_behavior_output_dir,
-        )
-
-    brain_brain_pairs = (
-        brain_brain_results[
-            ["brain_x", "brain_y"]
-        ]
-        .drop_duplicates()
-    )
-
-    for _, pair in brain_brain_pairs.iterrows():
-        plot_brain_brain_scatter(
-            brain_x=pair["brain_x"],
-            brain_y=pair["brain_y"],
-            results_df=brain_brain_results,
-            group_data=group_data,
-            output_dir=brain_brain_output_dir,
-        )
-
-    # Console summary
-    print("\nBrain–behavior correlations")
-    print("---------------------------")
-
-    for group in GROUPS:
-        group_results = brain_behavior_results.loc[
-            brain_behavior_results["group"] == group
-        ]
-
-        n_tests = group_results["p"].notna().sum()
-        n_significant = group_results["significant_fdr"].sum()
-
-        print(
-            f"{group.capitalize()}: "
-            f"{n_significant} of {n_tests} valid tests "
-            f"significant after FDR-BH correction."
-        )
-
-    print("\nBrain–brain correlations")
-    print("------------------------")
-
-    for group in GROUPS:
-        group_results = brain_brain_results.loc[
-            brain_brain_results["group"] == group
-        ]
-
-        n_tests = group_results["p"].notna().sum()
-        n_significant = group_results["significant_fdr"].sum()
-
-        print(
-            f"{group.capitalize()}: "
-            f"{n_significant} of {n_tests} valid tests "
-            f"significant after FDR-BH correction."
-        )
-
-
-if __name__ == "__main__":
-    main()

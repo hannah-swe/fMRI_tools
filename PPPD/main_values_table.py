@@ -200,27 +200,27 @@ df = df.replace(999, np.nan)
 
 # --- Load posturography data
 posturography_path = get_posturography_path()
-postu_path1 = os.path.join(posturography_path, "PosturoData_complete_Feb2024.xlsx")
-postu_path2 = os.path.join(posturography_path, "BehavioralData_2026Jun11.xlsx")
+postu_path1 = os.path.join(posturography_path, "PosturoData_complete_Jul2026.xlsx")
+postu_path2 = os.path.join(posturography_path, "BehavioralData_2026Jul17.xlsx")
 
 postu1_df = pd.read_excel(postu_path1)
 postu2_df = pd.read_excel(postu_path2, sheet_name="BehavioralData")
 
 
 # --- Keep only selected subjects
-postu1_df = postu1_df[postu1_df["SubjID"].isin(selected_subs)]
+postu1_df = postu1_df[postu1_df["VPNr"].isin(selected_subs)]
 postu2_df = postu2_df[postu2_df["SubjID"].isin(selected_subs)]
 
 
 # --- Select columns to keep for posturography data
-columns_to_keep_postu1 = ["SubjID", "SwaySpeed.1.0.0", "SwaySpeed.0.0.0", "RatingSway.1.0.0", "RatingSway.0.0.0"]
+columns_to_keep_postu1 = ["VPNr", "SwaySpeed.1.0.0", "SwaySpeed.0.0.0", "RatingSway.1.0.0", "RatingSway.0.0.0"]
 columns_to_keep_postu2 = ["SubjID", "EOfirm", "ECfirm", "RatingEOfirm", "RatingECfirm"]
 
 postu1_df = postu1_df[columns_to_keep_postu1]
 postu2_df = postu2_df[columns_to_keep_postu2]
 
 postu1_df = postu1_df.rename(columns={
-    "SubjID": "subject_num",
+    "VPNr": "subject_num",
     "SwaySpeed.1.0.0": "EOfirm_speed",
     "SwaySpeed.0.0.0": "ECfirm_speed",
     "RatingSway.1.0.0": "EOfirm_rating",
