@@ -23,14 +23,14 @@ PALETTE = {
 }
 
 BRAIN_VARS = [
-    "IPLPFcmL__Vermis_8_median",
-    "InsulaIg2L__Lingual_L_median",
-    "InsulaIg2L__SupraMarginal_L_median",
-    "InsulaOP3RAnat__Cerebellum_Crus2_L_median",
-    "OperculumOP1L__Vermis_8_median",
-    "OperculumOP1R__Vermis_9_median",
     "V5L__Cerebellum_6_R_median",
     "V5R__Cerebellum_Crus1_L_median",
+    "IPLPFcmL__Vermis_8_median",
+    "OperculumOP1L__Vermis_8_median",
+    "OperculumOP1R__Vermis_9_median",
+    "InsulaOP3RAnat__Cerebellum_Crus2_L_median",
+    "InsulaIg2L__Lingual_L_median",
+    "InsulaIg2L__SupraMarginal_L_median",
     "falff__Hippocampus_R_median",
 ]
 
@@ -965,33 +965,25 @@ def plot_brain_brain_heatmap(
     ax = sns.heatmap(
         rho_plot,
         mask=mask,
-        cmap="coolwarm",
+        cmap="RdBu_r",
         center=0,
         vmin=-1,
         vmax=1,
         annot=annotations,
         fmt="",
+        annot_kws={"fontsize": 16},
         linewidths=0.5,
         square=True,
-        cbar_kws={
-            "label": "Spearman ρ",
-        },
+        cbar_kws={"label": "Spearman ρ"},
     )
 
     ax.set_xlabel("")
     ax.set_ylabel("")
 
-    plt.xticks(
-        rotation=45,
-        ha="right",
-    )
-    plt.yticks(rotation=0)
+    plt.xticks(rotation=45, ha="right", fontsize=16)
+    plt.yticks(rotation=0, fontsize=16)
 
-    output_path = os.path.join(
-        output_dir,
-        f"brain_brain_heatmap_{group}_fdr.svg",
-    )
-
+    output_path = os.path.join(output_dir, f"brain_brain_heatmap_{group}_fdr.svg")
     save_and_show_figure(output_path)
 
     # Übersichtlicher DataFrame mit einer Zeile pro Korrelation
