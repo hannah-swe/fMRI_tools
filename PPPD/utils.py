@@ -96,9 +96,16 @@ def _coord_to_label_and_distance(x, y, z, atlas_img, atlas_data, value_to_label)
 
 
 # Extract cluster table from a stat image and annotate peak coordinates with AAL atlas labels
-def get_cluster_table_with_aal_labels(stat_img, stat_threshold, cluster_threshold=0, two_sided=False,
-                                      min_distance=8.0, aal_dir=aal_path, return_label_maps=False):
-    result  = get_clusters_table(
+def get_cluster_table_with_aal_labels(
+    stat_img,
+    stat_threshold,
+    cluster_threshold=0,
+    two_sided=False,
+    min_distance=8.0,
+    aal_dir=aal_path,
+    return_label_maps=False,
+):
+    clusters_table, label_maps = get_clusters_table(
         stat_img,
         stat_threshold=stat_threshold,
         cluster_threshold=cluster_threshold,
@@ -106,45 +113,54 @@ def get_cluster_table_with_aal_labels(stat_img, stat_threshold, cluster_threshol
         min_distance=min_distance,
         return_label_maps=True,
     )
-    clusters_table = result[0]
-    label_maps = result[1:]
 
     if clusters_table.empty:
         clusters_table["aal_label"] = pd.Series(dtype="object")
+        clusters_table["distance_mm"] = pd.Series(dtype="float")
+
         if return_label_maps:
             return clusters_table, label_maps
+
         return clusters_table
 
-    atlas_img, atlas_data, value_to_label = _load_local_aal_atlas(aal_dir=aal_dir)
+    atlas_img, atlas_data, value_to_label = _load_local_aal_atlas(
+        aal_dir=aal_dir
+    )
 
     coord_cols = None
+
     for candidate in [("X", "Y", "Z"), ("x", "y", "z")]:
         if all(col in clusters_table.columns for col in candidate):
             coord_cols = candidate
             break
+
     if coord_cols is None:
         raise ValueError(
-            f"Could not find coordinate columns in cluster table. Available columns: {list(clusters_table.columns)}"
+            "Could not find coordinate columns in cluster table. "
+            f"Available columns: {list(clusters_table.columns)}"
         )
 
     x_col, y_col, z_col = coord_cols
 
-    clusters_table[["aal_label", "distance_mm"]] = clusters_table.apply(
-        lambda row: pd.Series(
-            _coord_to_label_and_distance(
-                row[x_col],
-                row[y_col],
-                row[z_col],
-                atlas_img,
-                atlas_data,
-                value_to_label,
-            )
-        ),
-        axis=1,
+    clusters_table[["aal_label", "distance_mm"]] = (
+        clusters_table.apply(
+            lambda row: pd.Series(
+                _coord_to_label_and_distance(
+                    row[x_col],
+                    row[y_col],
+                    row[z_col],
+                    atlas_img,
+                    atlas_data,
+                    value_to_label,
+                )
+            ),
+            axis=1,
+        )
     )
 
     if return_label_maps:
         return clusters_table, label_maps
+
     return clusters_table
 
 
