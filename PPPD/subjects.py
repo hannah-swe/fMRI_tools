@@ -1,6 +1,7 @@
 # PPPD part 1 and part 2 subject ids
 # Part 1: ids < 100
 # Part 2: ids > 100
+# excluded subs due to head motion pre to HALFpipe preprocessing: 19, 45, 134, 140
 subs = [4, 6, 7, 9, 12, 13, 15, 16, 17, 20, 21, 22, 23, 25, 26, 27, 28, 30, 31, 32, 33, 35, 36, 37, 38, 39,
             40, 41, 42, 43, 44, 46, 48, 50, 51, 52, 53, 55, 56, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 70,
             71, 72, 73,
