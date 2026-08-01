@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import scipy.stats as stats
-from scipy.stats import ttest_ind, mannwhitneyu, shapiro, spearmanr
+from scipy.stats import ttest_ind, mannwhitneyu, rankdata, shapiro, spearmanr
 
 
 def normality_check(
@@ -59,36 +59,86 @@ def normality_check(
     return pd.DataFrame(results)
 
 
-def mwu_report(df, variable, group_col="group", group1="control", group2="patient"):
-
-    # descriptive statistics
-    descr = df.groupby(group_col)[variable].describe()
-
-    # extract groups (HC vs. Pat)
+def mwu_report(
+    df,
+    variable,
+    group_col="group",
+    group1="control",
+    group2="patient"
+):
+    # Gruppen extrahieren
     g1 = df.loc[df[group_col] == group1, variable].dropna()
     g2 = df.loc[df[group_col] == group2, variable].dropna()
-
-    # Mann-Whitney-U-Test
-    u, p = mannwhitneyu(g1, g2, method="asymptotic", alternative='two-sided')
 
     n1 = len(g1)
     n2 = len(g2)
 
-    U = min(u, n1 * n2 - u)  # SPSS equivalent U
+    if n1 == 0 or n2 == 0:
+        raise ValueError("Mindestens eine der beiden Gruppen enthält keine gültigen Werte.")
 
+    # Deskriptive Statistiken der Originalwerte
+    descriptive = pd.DataFrame({
+        "n": [n1, n2],
+        "mean": [g1.mean(), g2.mean()],
+        "SD": [g1.std(ddof=1), g2.std(ddof=1)],
+        "median": [g1.median(), g2.median()],
+        "Q1": [g1.quantile(0.25), g2.quantile(0.25)],
+        "Q3": [g1.quantile(0.75), g2.quantile(0.75)]
+    }, index=[group1, group2])
+
+    descriptive["IQR"] = descriptive["Q3"] - descriptive["Q1"]
+
+    # Ränge über beide Gruppen gemeinsam berechnen
+    combined = pd.concat([
+        pd.DataFrame({
+            "value": g1.to_numpy(),
+            "group": group1
+        }),
+        pd.DataFrame({
+            "value": g2.to_numpy(),
+            "group": group2
+        })
+    ], ignore_index=True)
+
+    # Gleiche Werte erhalten den mittleren Rang
+    combined["rank"] = rankdata(combined["value"], method="average")
+
+    rank_statistics = combined.groupby("group")["rank"].agg(
+        n="count",
+        mean_rank="mean",
+        rank_sum="sum"
+    ).reindex([group1, group2])
+
+    # Mann–Whitney-U-Test
+    u1, p = mannwhitneyu(
+        g1,
+        g2,
+        method="asymptotic",
+        alternative="two-sided"
+    )
+
+    u2 = n1 * n2 - u1
+    U = min(u1, u2)
+
+    # Einfache z-Berechnung ohne Bindungs- und Kontinuitätskorrektur
     mu_u = n1 * n2 / 2
     sigma_u = np.sqrt(n1 * n2 * (n1 + n2 + 1) / 12)
-
     z = (U - mu_u) / sigma_u
 
-    # effectsize r
+    # Effektgröße
     r = abs(z) / np.sqrt(n1 + n2)
 
-    print(f"\n{'='*50}")
+    print(f"\n{'=' * 60}")
     print(variable)
-    print(f"{'='*50}")
-    print(descr)
-    print("\nMann-Whitney-U-Test")
+    print(f"{'=' * 60}")
+
+    print("\nDeskriptive Statistiken der Originalwerte")
+    print(descriptive.round(3))
+
+    print("\nRangstatistiken")
+    print(rank_statistics.round(3))
+
+    print("\nMann–Whitney-U-Test")
     print(f"U = {U:.1f}")
     print(f"z = {z:.3f}")
     print(f"p = {p:.4f}")
@@ -96,6 +146,10 @@ def mwu_report(df, variable, group_col="group", group1="control", group2="patien
 
     return {
         "variable": variable,
+        "descriptive": descriptive,
+        "rank_statistics": rank_statistics,
+        "U1": u1,
+        "U2": u2,
         "U": U,
         "z": z,
         "p": p,
@@ -234,3 +288,15 @@ _ = mwu_report(df, "EOfirm_speed")
 _ = normality_check(df, "EOfirm_rating")
 # --- EO firm sway rating threshold descriptive stats and mann-whitney-u-test
 _ = mwu_report(df, "EOfirm_rating")
+
+
+# --- EC firm sway speed normality check
+_ = normality_check(df, "ECfirm_speed")
+# --- EC firm sway speed threshold descriptive stats and mann-whitney-u-test
+_ = mwu_report(df, "ECfirm_speed")
+
+
+# --- EC firm sway rating normality check
+_ = normality_check(df, "ECfirm_rating")
+# --- EC firm sway rating threshold descriptive stats and mann-whitney-u-test
+_ = mwu_report(df, "ECfirm_rating")
