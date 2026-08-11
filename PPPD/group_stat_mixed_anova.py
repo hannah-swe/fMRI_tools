@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import os
 import nibabel as nib
 from PPPD import (get_derivatives_path, get_participants_tsv, get_full_filename, get_mask_filename,
-                  get_output_path, define_group_comparison, get_selected_subject_list, get_mask_file)
+                  get_output_pre_post_path, define_group_comparison, get_selected_subject_list, get_mask_file)
 from PPPD.subjects import subs, subjects_to_exclude
 from PPPD.utils import get_cluster_table_with_aal_labels
 from PPPD.config import load_config
@@ -35,25 +35,51 @@ seeds = config["analysis"]["seeds"] # List of supported seeds:
                                     # "CSv", "CSvR",
                                     # "V1L", "V1R", "V2L", "V2R", "V5L", "V5R", "V6L", "V6R",
                                     # "VermisUvulaL", "VermisVII",
-                                    #  "HippocampusL", "HippocampusR"
+                                    # "HippocampusL", "HippocampusR"
+                                    # "PrecuneusL", "PrecuneusR"
 group_comparison = config["analysis"]["group_comparison"] # supported comparisons: "pat>HC", "HC>pat"
 mask_strategy = config["mask"]["strategy"] # supported strategies: "subject_based", "predefined"
 predefined_mask = config["mask"]["predefined_mask"]
 threshold_mask = config["mask"]["threshold"] # only used if mask_strategy == "subject_based"
 n_perm = config["statistics"]["n_perm"] # number of permutations for non-parametric cluster-based permutation test
+effect = config["analysis"]["effect"]
 
+
+# --- Validate effect
+valid_effects = {"intercept", "group", "part", "groupxpart"}
+
+if effect not in valid_effects:
+    raise ValueError(
+        f"Unknown effect '{effect}'. "
+        f"Supported effects: {sorted(valid_effects)}"
+    )
+
+# Part and group x part effects require subjects from both parts
+if part is not None and effect in {"part", "groupxpart"}:
+    raise ValueError(
+        f"effect='{effect}' requires subjects from both parts, "
+        f"but config analysis.part={part}. "
+        f"Set analysis.part to null."
+    )
 
 print(f"Used configuration parameters:\n"
       f"task = {task}\nruns = {runs}\npart = {part}\nfeature = {feature}\nseeds = {seeds}\n"
-      f"group_comparison = {group_comparison}\nmask_strategy = {mask_strategy}\nn_perm = {n_perm}\n")
+      f"group_comparison = {group_comparison}\neffect = {effect}\nmask_strategy = {mask_strategy}\nn_perm = {n_perm}\n")
 
 
 # --- Load participants.tsv
 participants_df = get_participants_tsv()
 participants_df["subject_id"] = participants_df["participant_id"].apply(lambda x: f"sub-{x:03d}")
+participants_df["part"] = participants_df["participant_id"].apply(lambda x: 1 if x < 100 else 2)
 
-# path to halfpipe derivatives directory
+
+# --- Path to halfpipe derivatives directory
 deriv_dir = get_derivatives_path(feature)
+
+
+# --- Get output path
+output_dir = get_output_pre_post_path(part, feature)
+os.makedirs(output_dir, exist_ok=True)
 
 
 # --- Group mapping for contrast via predefined comparison strategy:
@@ -67,11 +93,6 @@ selected_subs = get_selected_subject_list(part, subs, subjects_to_exclude)
 # --- Loop over seeds
 for seed in seeds:
     print(f"\n=== Running seed: {seed} ===")
-
-    # get output path
-    output_dir = get_output_path(part, feature, seed)
-    output_dir = os.path.join(output_dir, "pre_post_diff")
-    os.makedirs(output_dir, exist_ok=True)
 
 
     # --- Define the file suffix
@@ -144,7 +165,9 @@ for seed in seeds:
         # compute difference image between post/run-02 and pre/run-01
         diff_img = math_img("post - pre", post=run_imgs["run-02"], pre=run_imgs["run-01"])
         diff_filename = f"{subject_id}_task-{file_suffix}_post-minus-pre.nii.gz"
-        diff_path = os.path.join(output_dir, "diff_images", diff_filename)
+        diff_dir = os.path.join(output_dir, "diff_images")
+        os.makedirs(diff_dir, exist_ok=True)
+        diff_path = os.path.join(diff_dir, diff_filename)
         diff_img.to_filename(diff_path)
 
         diff_imgs.append(diff_path)
@@ -187,28 +210,44 @@ for seed in seeds:
 
 
     # --- Get design matrix for pre-post model and plot it
-    design_df = included_df.merge(participants_df[["subject_id", "group"]], on="subject_id", how="left")
+    design_df = included_df.merge(participants_df[["subject_id", "group", "part"]], on="subject_id", how="left")
     design_df["group_code"] = design_df["group"].map(group_mapping)
     if design_df["group_code"].isna().any():
         print(design_df[design_df["group_code"].isna()][["subject_id", "group"]])
         raise ValueError("Some subjects have missing or unmapped group labels.")
+    design_df["part_code"] = design_df["part"].map({
+        1: -1,
+        2: 1
+    })
+    design_df["groupxpart"] = (design_df["group_code"] * design_df["part_code"])
     # keep exact image order
     diff_imgs = design_df["diff_img"].tolist()
+    # intercept: main effect stimulation/time
+    # group: 2-way interaction stimulation x group
+    # part: 2-way interaction stimulation x part
+    # groupxpart: 3-way interaction stimulation x group x part
     second_level_design = pd.DataFrame({
         "intercept": np.ones(len(design_df)),
-        "group": design_df["group_code"].astype(float)
+        "group": design_df["group_code"].astype(float),
+        "part": design_df["part_code"].astype(float),
+        "groupxpart": design_df["groupxpart"].astype(float),
     })
     print("Number of difference images:", len(diff_imgs))
     print("Design matrix shape:", second_level_design.shape)
-    # plot_design_matrix(second_level_design)
-    # plt.show()
+    plot_design_matrix(second_level_design)
+    plt.show()
+
+
+    # --- Get statistical output folders for different effects
+    stats_output_dir = os.path.join(output_dir, effect)
+    os.makedirs(stats_output_dir, exist_ok=True)
 
 
     # --- PARAMETRIC TEST (voxel-wise two sample t-test unpaired)
     # fit model (here: z-scores are used, also possible: 'z_score', 'stat', 'p_value', 'effect_size', 'effect_variance', 'all')
     second_level_model = SecondLevelModel(mask_img=analysis_mask)
     second_level_model = second_level_model.fit(diff_imgs, design_matrix=second_level_design)
-    z_map = second_level_model.compute_contrast("group", output_type='z_score')
+    z_map = second_level_model.compute_contrast(effect, output_type='z_score')
 
     # Significance test:
     # Version 1: abs(z) > 3.09 (equivalent to p < 0.001 one-sided test), cluster size > 10 voxels
@@ -228,7 +267,10 @@ for seed in seeds:
                                    figure=fig, title=None, plot_abs=False, symmetric_cbar=True)
         display.frame_axes.figure.suptitle(f"difference z map (post - pre) \n {base_title}; "
                                            f"|z| > {z_threshold_p001}; clusters > 10 voxels")
-        display.savefig(os.path.join(output_dir, "01_uncorrected", f"{file_suffix}_uncorrected_p001_cluster10.png"))
+        stats_output_path = os.path.join(stats_output_dir, "01_uncorrected")
+        os.makedirs(stats_output_path, exist_ok=True)
+        display.savefig(os.path.join(stats_output_path, f"{file_suffix}_uncorrected_p001_cluster10.png"))
+        plt.show()
     else:
         print("No suprathreshold clusters; skipping plots.")
 
@@ -247,10 +289,11 @@ for seed in seeds:
     # threshold is in p-scale, not z-scale; threshold=0.001 corresponds to a cluster-forming threshold of p < .001
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
+
         perm_out = non_parametric_inference(
             second_level_input=diff_imgs,
             design_matrix=second_level_design,
-            second_level_contrast="group",
+            second_level_contrast=effect,
             mask=analysis_mask,
             model_intercept=False,   # intercept is already in the design matrix
             n_perm=n_perm,
@@ -268,6 +311,7 @@ for seed in seeds:
     # signed cluster-mass corrected -log10(p) map
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
+
         signed_logp_mass_thr = math_img(
             f"np.where(logp > {neglog_alpha_05}, np.sign(z) * logp, 0)",
             logp=perm_out["logp_max_mass"],
@@ -293,7 +337,9 @@ for seed in seeds:
                                        title=None, colorbar=True)
             display.frame_axes.figure.suptitle(f"difference map permutation test cluster-mass FWER\n"
                                                f" {base_title} | corrected p < .05")
-            display.savefig(os.path.join(output_dir, "04_nonparametric", f"{file_suffix}_perm_clustermass_fwer05.png"))
+            stats_output_path = os.path.join(stats_output_dir, "04_nonparametric")
+            os.makedirs(stats_output_path, exist_ok=True)
+            display.savefig(os.path.join(stats_output_path, f"{file_suffix}_perm_clustermass_fwer05.png"))
 
 
         # --- Get cluster table with aal brain atlas
@@ -310,7 +356,6 @@ for seed in seeds:
         if cluster_table_perm_mass.empty:
             print("Cluster table is empty despite significant voxels. Skipping saves.")
         else:
-            label_maps = label_maps[0]
             print(f"Found {len(label_maps)} label map(s)")
             # convert peak stat value (-log10(p)) back to real p-value (10^(-p))
             cluster_p_values = 10 ** (-abs(cluster_table_perm_mass["Peak Stat"]))
@@ -324,14 +369,14 @@ for seed in seeds:
             })
 
             # save cluster table
-            cluster_table_dir = os.path.join(output_dir, "cluster_tables")
+            cluster_table_dir = os.path.join(stats_output_dir, "cluster_tables")
             os.makedirs(cluster_table_dir, exist_ok=True)
             cluster_table_path = os.path.join(cluster_table_dir, f"{file_suffix}_cluster_table_perm_mass.csv")
             cluster_table_perm_mass.to_csv(cluster_table_path, index=False)
 
 
             # --- Save significant cluster masks for post-hoc extraction
-            posthoc_mask_dir = os.path.join(output_dir, "sig_cluster_masks")
+            posthoc_mask_dir = os.path.join(stats_output_dir, "sig_cluster_masks")
             os.makedirs(posthoc_mask_dir, exist_ok=True)
 
             os.makedirs(os.path.join(posthoc_mask_dir, "positive"), exist_ok=True)
@@ -376,12 +421,43 @@ for seed in seeds:
 
 
     # --- Clean up memory after each seed
-    # plt.close("all")
-    vars_to_delete = ["diff_imgs", "included_rows", "sub_mask_imgs", "analysis_mask", "second_level_design",
-                      "second_level_model", "z_map", "thresholded_map1", "thr1_data", "cluster_table1", "perm_out",
-                      "sign_z_map", "signed_logp_mass_thr", "data", "logp_mass_thr_float", "cluster_table_perm_mass",
-                      "label_maps", "cluster_p_values", "pos_sig_mask", "neg_sig_mask"]
-    for var in vars_to_delete:
-        if var in locals():
-            del locals()[var]
+    try:
+        display.close()
+    except (NameError, AttributeError):
+        pass
+    plt.close("all")
+
+    # Always existing large objects
+    del diff_imgs
+    del included_rows
+    del included_df
+    del sub_mask_imgs
+    del analysis_mask
+    del design_df
+    del second_level_design
+    del second_level_model
+    del z_map
+    del thresholded_map1
+    del thr1_data
+    del perm_out
+    del sign_z_map
+    del signed_logp_mass_thr
+    del data
+
+    # Objects that only exist in certain branches
+    for name in [
+        "diff_img",
+        "logp_mass_thr_float",
+        "cluster_table_perm_mass",
+        "label_maps",
+        "lm",
+        "lm_data",
+        "signed_vals",
+        "cluster_p_values",
+        "pos_sig_mask",
+        "neg_sig_mask",
+    ]:
+        if name in globals():
+            del globals()[name]
+
     gc.collect()
