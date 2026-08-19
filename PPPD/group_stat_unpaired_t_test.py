@@ -293,7 +293,7 @@ for seed in seeds:
         print("No suprathreshold clusters; skipping plots.")
 
 
-    '''
+
     # ----------------------------------------------------------------------------------------------------------------
     # NON-PARAMETRIC TESTS: permutation inference with cluster-level correction:
     # ----------------------------------------------------------------------------------------------------------------
@@ -480,7 +480,7 @@ for seed in seeds:
 
                 lm.to_filename(lm_path)
                 print(f"Saved cluster ID map: {lm_path}")
-    '''
+
 
 
     # --- Clean up memory after each seed
