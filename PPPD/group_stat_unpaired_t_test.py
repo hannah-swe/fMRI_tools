@@ -11,7 +11,7 @@ from PPPD.config import load_config
 from PPPD.plotting import get_colorbar_limits
 from nilearn.glm import threshold_stats_img
 from nilearn.glm.second_level import SecondLevelModel, non_parametric_inference
-from nilearn.image import threshold_img, math_img
+from nilearn.image import threshold_img, math_img, new_img_like
 from nilearn.plotting import plot_stat_map, plot_design_matrix, plot_glass_brain
 from nilearn.masking import intersect_masks
 import numpy as np
@@ -37,7 +37,8 @@ seeds = config["analysis"]["seeds"] # List of supported seeds:
                                     # "CSv", "CSvR",
                                     # "V1L", "V1R", "V2L", "V2R", "V5L", "V5R", "V6L", "V6R",
                                     # "VermisUvulaL", "VermisVII",
-                                    #  "HippocampusL", "HippocampusR"
+                                    # "HippocampusL", "HippocampusR"
+                                    # "PrecuneusL", "PrecuneusR"
 group_comparison = config["analysis"]["group_comparison"] # supported comparisons: "pat>HC", "HC>pat"
 mask_strategy = config["mask"]["strategy"] # supported strategies: "subject_based", "predefined"
 predefined_mask = config["mask"]["predefined_mask"]
@@ -48,16 +49,12 @@ t_test_strategy = config["statistics"]["t_test_strategy"] # either two-sided or 
 # Definition of plot parameters depending on t-test strategy
 if t_test_strategy == "two_sided":
     two_sided = True
-    z_threshold_p001 = 3.29
     test_label = "twosided"
-    threshold_label = "|z| > 3.29"
     cmap = "RdBu_r"
     symmetric_cbar = True
 elif t_test_strategy == "one_sided":
     two_sided = False
-    z_threshold_p001 = 3.09
     test_label = "onesided"
-    threshold_label = "z > 3.09"
     cmap = "inferno"
     symmetric_cbar = False
 else:
@@ -73,7 +70,8 @@ print(f"Used configuration parameters:\n"
 participants_df = get_participants_tsv()
 participants_df["subject_id"] = participants_df["participant_id"].apply(lambda x: f"sub-{x:03d}")
 
-# path to halfpipe derivatives directory
+
+# --- Path to halfpipe derivatives directory
 deriv_dir = get_derivatives_path(feature)
 
 
@@ -91,6 +89,7 @@ for seed in seeds:
 
     # get output path
     output_dir = get_output_path(part, feature, seed)
+    os.makedirs(output_dir, exist_ok=True)
 
 
     # --- Define the file suffix
@@ -184,7 +183,11 @@ for seed in seeds:
     # plt.show()
 
 
-    # --- PARAMETRIC TESTS with different versions of threshold and correction for multiple comparisons:
+
+    # _________________________________________________________________________________________________________________
+    # PARAMETRIC TESTS with different versions of threshold and correction for multiple comparisons:
+    # _________________________________________________________________________________________________________________
+
     # fit model (here: z-scores are used, also possible: 'z_score', 'stat', 'p_value', 'effect_size', 'effect_variance', 'all')
     second_level_model_unpaired = SecondLevelModel(mask_img=analysis_mask)
     second_level_model_unpaired = second_level_model_unpaired.fit(derivative_nii, design_matrix=unpaired_design_matrix)
@@ -194,39 +197,106 @@ for seed in seeds:
     # save_z_map = os.path.join(output_dir, "stat_maps", f"z_map_{file_suffix}.nii.gz")
     # z_map.to_filename(save_z_map)
 
-    # Version 1: abs(z) > 3.09 (equivalent to p < 0.001 one-sided test), cluster size > 10 voxels
+    # Version 1: abs(z) > 3.09 (equivalent to p < 0.001 one-sided test), cluster extent threshold = 10 voxels
     # z(threshold)=3.09 for p=0.001 when testing one-sided; 3.29 for two-sided
-    thresholded_map1 = threshold_img(z_map, threshold=z_threshold_p001, cluster_threshold=10, two_sided=two_sided)
+    thresholded_map1, z_threshold_p001 = threshold_stats_img(
+        z_map,
+        alpha=0.001,
+        height_control="fpr", # meaning voxelwise uncorrected thresholding
+        cluster_threshold=10,
+        two_sided=two_sided,
+    )
     thr1_data = thresholded_map1.get_fdata()
-    # plot thresholded maps if there are any voxels/clusters left
+
+    if two_sided:
+        threshold_label = f"|z| > {z_threshold_p001:.2f}"
+    else:
+        threshold_label = f"z > {z_threshold_p001:.2f}"
+
+    if two_sided:
+        print(f"Uncorrected voxel-wise threshold: |z| > {z_threshold_p001:.4f}")
+    else:
+        print(f"Uncorrected voxel-wise threshold: z > {z_threshold_p001:.4f}")
+
     if np.any(thr1_data != 0):
+        # save nifti of uncorrected t-test
+        save_thresh_map_dir = os.path.join(output_dir, "uncorrected_maps")
+        os.makedirs(save_thresh_map_dir, exist_ok=True)
+
+        # Split thresholded image into positive and negative image and save
+        # positive image
+        if np.any(thr1_data > 0):
+            positive_map = new_img_like(thresholded_map1, np.where(thr1_data > 0, thr1_data, 0))
+            save_pos_thresh_map = os.path.join(save_thresh_map_dir, f"{file_suffix}_positive_thresh_map.nii.gz")
+            positive_map.to_filename(save_pos_thresh_map)
+            print("Saved positive cluster map.")
+        else:
+            print("No positive significant clusters.")
+
+        # negative image
+        if np.any(thr1_data < 0):
+            negative_map = new_img_like(thresholded_map1, np.where(thr1_data < 0, thr1_data, 0))
+            save_neg_thresh_map = os.path.join(save_thresh_map_dir, f"{file_suffix}_negative_thresh_map.nii.gz")
+            negative_map.to_filename(save_neg_thresh_map)
+
+            # save additionally an image with the absolute values of negative clusters for visualization only
+            negative_display_map = new_img_like(thresholded_map1, np.where(thr1_data < 0, np.abs(thr1_data), 0))
+            save_neg_thresh_display_map = os.path.join(save_thresh_map_dir,
+                                                       f"{file_suffix}_negative_thresh_display_map.nii.gz")
+            negative_display_map.to_filename(save_neg_thresh_display_map)
+            print("Saved negative cluster map.")
+        else:
+            print("No negative significant clusters.")
+
+        # plot thresholded maps if there are any voxels/clusters left
         # get vmin and vmax
         vmin, vmax = get_colorbar_limits(data=thr1_data, threshold=z_threshold_p001, two_sided=two_sided)
+
         # plot
         plot_stat_map(thresholded_map1, display_mode='mosaic', cmap=cmap, threshold=z_threshold_p001,
                       symmetric_cbar=symmetric_cbar, vmin=vmin, vmax=vmax,
-                      title=f"z map {base_title}; {threshold_label}; clusters > 10 voxels")
+                      title=f"z map {base_title}; {threshold_label}; clusters >= 10 voxels")
         plt.show()
         fig = plt.figure(figsize=(9,5))
         display = plot_glass_brain(thresholded_map1, cmap=cmap, threshold=z_threshold_p001,
                                    symmetric_cbar=symmetric_cbar, vmin=vmin, vmax=vmax,
                                    plot_abs=False, figure=fig, title=None)
-        display.frame_axes.figure.suptitle(f"z map {base_title}; {threshold_label}; clusters > 10 voxels")
-        display.savefig(os.path.join(output_dir, "01_uncorrected", f"{file_suffix}_uncorrected_p001_cluster10.png"))
-    else:
-        print("No suprathreshold clusters; skipping plots.")
-    # get cluster table with anatomical labels
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+        display.frame_axes.figure.suptitle(f"z map {base_title}; {threshold_label}; clusters >= 10 voxels")
+        plt.show()
+        uncorrected_plot_dir = os.path.join(output_dir, "01_uncorrected")
+        os.makedirs(uncorrected_plot_dir, exist_ok=True)
+        display.savefig(os.path.join(uncorrected_plot_dir, f"{file_suffix}_uncorrected_p001_cluster10.png"))
+
+        # get cluster table with anatomical labels
         cluster_table1 = get_cluster_table_with_aal_labels(
-            stat_img=thresholded_map1,
+            stat_img=z_map,
             stat_threshold=z_threshold_p001,
             cluster_threshold=10,
             two_sided=two_sided,
         )
+        # get voxel size and add cluster size in number of voxels to the table
+        voxel_sizes = z_map.header.get_zooms()[:3]
+        voxel_volume_mm3 = np.prod(voxel_sizes)
+
+        cluster_sizes_mm3 = pd.to_numeric(cluster_table1["Cluster Size (mm3)"], errors="coerce")
+        cluster_size_voxels = (cluster_sizes_mm3 / voxel_volume_mm3).round().astype("Int64")
+        insert_position = cluster_table1.columns.get_loc("Cluster Size (mm3)") + 1
+        cluster_table1.insert(insert_position, "Cluster Size (voxels)", cluster_size_voxels)
+
+        # save uncorrected cluster tables
+        uncorrected_table_dir = os.path.join(output_dir, "uncorrected_tables")
+        os.makedirs(uncorrected_table_dir, exist_ok=True)
+        uncorrected_table_path = os.path.join(uncorrected_table_dir, f"{file_suffix}_cluster_table_uncorrected.csv")
+        cluster_table1.to_csv(uncorrected_table_path, index=False)
+
+    else:
+        print("No suprathreshold clusters; skipping plots.")
 
 
-    # --- NON-PARAMETRIC TESTS: permutation inference with cluster-level correction:
+    '''
+    # ----------------------------------------------------------------------------------------------------------------
+    # NON-PARAMETRIC TESTS: permutation inference with cluster-level correction:
+    # ----------------------------------------------------------------------------------------------------------------
     # threshold is in p-scale, not z-scale; threshold=0.001 corresponds to a cluster-forming threshold of p < .001
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -326,23 +396,27 @@ for seed in seeds:
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            cluster_table_perm_mass, label_maps = get_cluster_table_with_aal_labels(
-                stat_img=perm_cluster_img_float,
-                stat_threshold=neglog_alpha_05,   # binary image after math_img
-                cluster_threshold=0,
-                two_sided=two_sided,
-                return_label_maps=True,
-            )
 
-        label_maps = label_maps[0]
+            cluster_table_perm_mass, label_maps = (
+                get_cluster_table_with_aal_labels(
+                    stat_img=perm_cluster_img_float,
+                    stat_threshold=neglog_alpha_05,
+                    cluster_threshold=0,
+                    two_sided=two_sided,
+                    return_label_maps=True,
+                )
+            )
 
         if cluster_table_perm_mass.empty:
             print("Cluster table is empty despite significant voxels. Skipping saves.")
         else:
+            print(f"Found {len(label_maps)} label map(s).")
+
             cluster_table_perm_mass["p-value"] = (10 ** (-np.abs(cluster_table_perm_mass["Peak Stat"])))
 
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
+
                 cluster_table_perm_mass_juelich = get_cluster_table_with_juelich_prob_labels(
                     stat_img=perm_cluster_img_float,
                     stat_threshold=neglog_alpha_05,
@@ -362,6 +436,7 @@ for seed in seeds:
                 "aal_label", "distance_mm"
             ]
             cols_juelich = ["Cluster ID", "juelich_top_probs"]
+
             cluster_table_combined = (
                 cluster_table_perm_mass[cols_aal]
                 .merge(
@@ -388,20 +463,52 @@ for seed in seeds:
             posthoc_mask_dir = os.path.join(output_dir, "sig_cluster_masks")
             os.makedirs(posthoc_mask_dir, exist_ok=True)
 
-            for lm in label_maps:
+            if cluster_table_perm_mass.empty:
+                print("Cluster table is empty despite significant voxels. Skipping saves.")
+
+            elif len(label_maps) == 0:
+                print("No label map returned despite non-empty cluster table.")
+
+            else:
+                # one label map containing all clusters as integer IDs
+                lm = label_maps[0]
+
+                posthoc_mask_dir = os.path.join(output_dir, "sig_cluster_masks")
+                os.makedirs(posthoc_mask_dir, exist_ok=True)
+
                 lm_path = os.path.join(posthoc_mask_dir, f"{file_suffix}_cluster_id_map.nii.gz")
+
                 lm.to_filename(lm_path)
                 print(f"Saved cluster ID map: {lm_path}")
-
+    '''
 
 
     # --- Clean up memory after each seed
-    # plt.close("all")
-    vars_to_delete = ["derivative_nii", "included_subjects", "sub_mask_imgs", "analysis_mask",
-                      "second_level_model_unpaired", "z_map", "thresholded_map1", "thr1_data", "perm_out",
-                      "logp_mass_thr", "logp_mass_thr_float", "cluster_table1", "report_v1", "cluster_table_perm_mass",
-                      "cluster_table_perm_mass_juelich", "cluster_table_combined", "label_maps", "lm", "signed_logp_mass"]
-    for var in vars_to_delete:
-        if var in locals():
-            del locals()[var]
+    # Close nilearn/matplotlib plots first
+    try:
+        display.close()
+    except (NameError, AttributeError):
+        pass
+    plt.close("all")
+
+    # Large numpy / nifti / nilearn objects
+    for name in [
+        "data",
+        "thr1_data",
+        "perm_out",
+        "second_level_model_unpaired",
+        "z_map",
+        "thresholded_map1",
+        "logp_mass_thr",
+        "signed_logp_mass",
+        "signed_logp_mass_thr",
+        "perm_cluster_img",
+        "perm_cluster_img_float",
+        "analysis_mask",
+        "label_maps",
+        "lm",
+    ]:
+        if name in globals():
+            del globals()[name]
+
     gc.collect()
