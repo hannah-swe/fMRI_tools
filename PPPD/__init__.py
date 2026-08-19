@@ -25,6 +25,7 @@ SUPPORTED_MASKS = ["dmn", "vvn"]
 config = load_config()
 analysis_path = config["paths"]["analysis_path"]
 output_path = config["paths"]["output_path"]
+output_path_pre_post = config["paths"]["output_path_pre_post"]
 mask_path = config["paths"]["mask_path"]
 aal_path = config["paths"]["aal_path"]
 suit_path = config["paths"]["suit_path"]
@@ -139,6 +140,45 @@ def get_output_path(part, feature, seed=None):
     return full_output_path
 
 
+# Gets output path for pre-post-analysis
+def get_output_pre_post_path(part, feature) -> str:
+    if part is None:
+        if feature == "seed_based":
+            folder = f"both_parts_seed_based"
+        elif feature == "falff":
+            folder = "both_parts_falff"
+        elif feature == "alff":
+            folder = "both_parts_alff"
+        else:
+            raise ValueError(f"Unsupported feature: {feature}")
+
+    elif part == 1:
+        if feature == "seed_based":
+            folder = f"part1_seed_based"
+        elif feature == "falff":
+            folder = "part1_falff"
+        elif feature == "alff":
+            folder = "part1_alff"
+        else:
+            raise ValueError(f"Unsupported feature: {feature}")
+
+    elif part == 2:
+        if feature == "seed_based":
+            folder = f"part2_seed_based"
+        elif feature == "falff":
+            folder = "part2_falff"
+        elif feature == "alff":
+            folder = "part2_alff"
+        else:
+            raise ValueError(f"Unsupported feature: {feature}")
+
+    else:
+        raise ValueError(f"Unsupported part: {part}")
+    full_output_path = os.path.join(output_path_pre_post, folder)
+    os.makedirs(full_output_path, exist_ok=True)
+    return full_output_path
+
+
 # Gets mask path and load predefined mask file
 def get_mask_file(predefined_mask):
     if predefined_mask not in SUPPORTED_MASKS:
@@ -185,7 +225,7 @@ def get_selected_subject_list(part, subs, subjects_to_exclude):
 
 
 # Get path to significant post-hoc cluster mask
-def get_posthoc_cluster_mask(feature, group_comparison, pre_post_diff=True, direction=None, part=None, seed=None,):
+def get_posthoc_cluster_mask(feature, group_comparison, pre_post_diff=True, direction=None, part=None, seed=None, effect=None):
     if feature == "seed_based" and seed is None:
         raise ValueError("seed must be provided for seed_based feature.")
     if pre_post_diff and direction not in ["positive", "negative"]:
@@ -198,9 +238,9 @@ def get_posthoc_cluster_mask(feature, group_comparison, pre_post_diff=True, dire
     # build filename and directory
     if pre_post_diff:
         if feature == "seed_based":
-            filename = f"{feature}_{seed}_{group_comparison}_{part_label}_{direction}_twosided_cluster_id_map.nii.gz"
+            filename = f"{feature}_{seed}_{group_comparison}_{part_label}_{effect}_{direction}_cluster_id_map.nii.gz"
         else:
-            filename = f"{feature}_{group_comparison}_{part_label}_{direction}_twosided_cluster_id_map.nii.gz"
+            filename = f"{feature}_{group_comparison}_{part_label}_{effect}_{direction}_cluster_id_map.nii.gz"
     else:
         if feature == "seed_based":
             filename = f"{feature}_{seed}_{group_comparison}_{part_label}_twosided_cluster_id_map.nii.gz"
@@ -209,12 +249,16 @@ def get_posthoc_cluster_mask(feature, group_comparison, pre_post_diff=True, dire
 
     # build directory
     if pre_post_diff:
-        mask_dir = os.path.join(get_output_path(part, feature, seed), "pre_post_diff", "sig_cluster_masks", direction)
+        mask_dir = os.path.join(get_output_pre_post_path(part, feature), effect, "sig_cluster_masks", direction)
     else:
         mask_dir = os.path.join(get_output_path(part, feature, seed), "sig_cluster_masks")
     os.makedirs(mask_dir, exist_ok=True)
 
     return os.path.join(mask_dir, filename)
+
+
+# Get mask of significant cluster of pre-post analysis
+
 
 
 # Get signed cluster-mass corrected permutation map
