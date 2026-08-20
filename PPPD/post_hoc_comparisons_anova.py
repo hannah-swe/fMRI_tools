@@ -3,7 +3,7 @@ matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 import os
 import nibabel as nib
-from PPPD import (get_derivatives_path, get_participants_tsv, get_full_filename, get_output_path,
+from PPPD import (get_derivatives_path, get_participants_tsv, get_full_filename, get_output_pre_post_path,
                   get_selected_subject_list, get_posthoc_cluster_mask)
 from PPPD.subjects import subs, subjects_to_exclude
 from PPPD.utils import get_cluster_table_with_aal_labels
@@ -30,14 +30,18 @@ seed = config["analysis"]["seeds"][0] # List of supported seeds:
                                     # "V1L", "V1R", "V2L", "V2R", "V5L", "V5R", "V6L", "V6R",
                                     # "VermisUvulaL", "VermisVII",
                                     #  "HippocampusL", "HippocampusR"
+                                    # "PrecuneusL", "PrecuneusR"
 group_comparison = config["analysis"]["group_comparison"] # supported comparisons: "pat>HC", "HC>pat"
-direction = "negative" # possible directions: "positive" (= clusters, where pat>HC), "negative" (= cluster, where HC>pat)
+direction = "positive" # possible directions: "positive", "negative"
+effect = config["analysis"]["effect"]
 # define color palette for plotting
 palette = {"control": "teal", "patient": "hotpink"}
+palette_part = {1: "deepskyblue", 2: "darkblue"}
 
 print(f"Used configuration parameters:\n"
       f"task = {task}\nruns = {runs}\npart = {part}\nfeature = {feature}\nseed = {seed}\n"
-      f"group_comparison = {group_comparison}")
+      f"group_comparison = {group_comparison}\neffect = {effect}")
+
 
 # --- Get all directories and participants.tsv:
 # path to halfpipe derivatives directory
@@ -46,11 +50,11 @@ deriv_dir = get_derivatives_path(feature)
 # read participants.tsv
 participants_df = get_participants_tsv()
 participants_df["subject_id"] = participants_df["participant_id"].apply(lambda x: f"sub-{x:03d}")
+participants_df["part"] = participants_df["participant_id"].apply(lambda x: 1 if x < 100 else 2)
 
 # get output path
-output_dir = get_output_path(part, feature, seed)
-output_dir = os.path.join(output_dir, "pre_post_diff")
-os.makedirs(output_dir, exist_ok=True)
+output_dir = get_output_pre_post_path(part, feature)
+output_dir = os.path.join(output_dir, f"{effect}")
 
 
 # --- Define the file suffix
@@ -76,9 +80,8 @@ selected_subs = get_selected_subject_list(part, subs, subjects_to_exclude)
 # --- Load data:
 # initialize lists for derivatives, subject ids and mask images
 included_rows = []
-mask_path = get_posthoc_cluster_mask(feature=feature, seed=seed, group_comparison=group_comparison, part=part,
-                                      direction=direction)
-mask_path = mask_path.replace("twosided_", "")
+mask_path = os.path.join(output_dir, "sig_cluster_masks", f"{direction}",
+                         f"{feature}_{seed}_{group_comparison}_{part_label}_{effect}_{direction}_cluster_id_map.nii.gz")
 
 for s in selected_subs:
     # get full subject id
@@ -112,7 +115,7 @@ for s in selected_subs:
     })
 
 included_df = pd.DataFrame(included_rows)
-included_df = included_df.merge(participants_df[["subject_id", "group"]], on="subject_id", how="left")
+included_df = included_df.merge(participants_df[["subject_id", "group", "part"]], on="subject_id", how="left")
 print("Loaded subjects:", included_df["subject_id"].nunique())
 
 
@@ -126,20 +129,15 @@ if feature == "seed_based":
     table_file_suffix = f"{feature}_{seed}_{group_comparison}"
 else:
     table_file_suffix = f"{feature}_{group_comparison}"
-part_label = "all" if part is None else f"{part}"
-table_file_suffix = f"{table_file_suffix}_{part_label}"
+table_file_suffix = f"{table_file_suffix}_{part_label}_{effect}"
 cluster_table_path = os.path.join(output_dir, "cluster_tables", f"{table_file_suffix}_cluster_table_perm_mass.csv")
 cluster_table_perm_mass = pd.read_csv(cluster_table_path)
 
 # Keep only clusters matching selected direction
 if direction == "negative":
-    relevant_clusters = cluster_table_perm_mass[
-        cluster_table_perm_mass["Stat"] < 0
-    ].copy()
+    relevant_clusters = cluster_table_perm_mass[cluster_table_perm_mass["Direction"] == "negative"].copy()
 elif direction == "positive":
-    relevant_clusters = cluster_table_perm_mass[
-        cluster_table_perm_mass["Stat"] > 0
-    ].copy()
+    relevant_clusters = cluster_table_perm_mass[cluster_table_perm_mass["Direction"] == "positive"].copy()
 else:
     raise ValueError("direction must be 'positive' or 'negative'")
 
@@ -257,47 +255,53 @@ rows = []
 for _, cluster_row in cluster_info_df.iterrows():
     cluster_id = cluster_row["cluster_id"]
     cluster_path = cluster_row["path"]
+    print(f"Extracting subject-wise connectivity values for cluster {cluster_id}.")
 
     single_cluster_mask = nib.load(cluster_path)
     for _, row in included_df.iterrows():
         subject_id = row["subject_id"]
         group = row["group"]
+        part = row["part"]
 
         # pre/run-01
         pre_voxels = apply_mask(row["pre_img"], single_cluster_mask)
-        pre_mean = np.mean(pre_voxels)
+        pre_median = np.median(pre_voxels)
         rows.append({
             "cluster": cluster_id,
             "subject_id": subject_id,
             "group": group,
+            "part": part,
             "run": "pre",
-            "value": pre_mean
+            "value": pre_median
         })
 
         # post/run-02
         post_voxels = apply_mask(row["post_img"], single_cluster_mask)
-        post_mean = np.mean(post_voxels)
+        post_median = np.median(post_voxels)
         rows.append({
             "cluster": cluster_id,
             "subject_id": subject_id,
             "group": group,
+            "part": part,
             "run": "post",
-            "value": post_mean
+            "value": post_median
         })
+
+    print (f"Finished extraction for cluster {cluster_id}.")
 
 plot_df = pd.DataFrame(rows)
 
 
 # --- Get dataframe with difference values
-diff_df = (plot_df.pivot(index=["cluster", "subject_id", "group"], columns="run", values="value").reset_index())
+diff_df = (plot_df.pivot(index=["cluster", "subject_id", "group", "part"], columns="run", values="value").reset_index())
 diff_df["post_minus_pre"] = diff_df["post"] - diff_df["pre"]
 
 
 # --- Plots:
-plot_dir = os.path.join(output_dir, "post-hoc", "plots")
+plot_dir = os.path.join(output_dir, "post-hoc", "plots", f"{seed}")
 os.makedirs(plot_dir, exist_ok=True)
 sns.set_theme(style="ticks")
-sns.set_context("talk")
+sns.set_context()
 
 for cluster_id in sorted(plot_df["cluster"].unique()):
     info = cluster_info_df[cluster_info_df["cluster_id"] == cluster_id]
@@ -326,46 +330,188 @@ for cluster_id in sorted(plot_df["cluster"].unique()):
         stars = "n.s."
 
 
-    # --- Plot 1: Pre/Post trajectories
-    plt.figure(figsize=(7, 8))
-    plt.axhline(0, color="grey", linewidth=2, alpha=0.5)
-    sns.lineplot(data=this_plot, x="run", y="value", hue="group", units="subject_id", estimator=None, alpha=0.35,
-                 linewidth=1.75, palette=palette, legend=False,)
-    sns.pointplot(data=this_plot, x="run", y="value", hue="group", errorbar="se", markers="o", linestyles="-",
-                  linewidth=3.5, palette=palette, legend=False,)
-    plt.title(f"{seed}: pre-post values")
-    plt.xlabel("")
-    plt.ylabel(f"Mean value in {cluster_label}")
-    plt.tight_layout()
-    sns.despine()
-    plt.savefig(os.path.join(
-        plot_dir, f"{file_suffix}_cluster-{cluster_id:02d}_{cluster_label}_lineplot_pre_post_by_group.png"), dpi=300)
-    plt.show()
+    # --- Plot intercept effects (lineplot pre-post)
+    if effect == "intercept":
+        # --- Plot 1: Pre/Post trajectories
+        plt.figure(figsize=(2.5, 4))
+        plt.axhline(0, color="grey", linewidth=1.5, alpha=0.5)
+        sns.lineplot(data=this_plot, x="run", y="value", hue="group", units="subject_id", estimator=None, alpha=0.3,
+                     linewidth=1, palette=palette, legend=False,)
+        sns.pointplot(data=this_plot, x="run", y="value", hue="group", errorbar="se", markers="o", linestyles="-",
+                      linewidth=2, palette=palette, legend=False,)
+        sns.pointplot(data=this_plot, x="run", y="value", errorbar="se", markers="o", linestyles="-",
+                      linewidth=2, color="black", legend=False,)
+        xlim = plt.xlim()
+        # y-position above data
+        y_max = this_plot["value"].max()
+        y_min = this_plot["value"].min()
+        h = 0.02 * (y_max - y_min)
+        y = y_max + h
+        # x positions of groups
+        x1 = 0
+        x2 = 1
+        # significance bracket
+        plt.plot( [x1, x1, x2, x2], [y, y + h, y + h, y], lw=1.5, c="black")
+        # stars
+        plt.text((x1 + x2) / 2, y + h, stars, ha="center", va="bottom", fontsize=12, weight="bold",)
+        plt.xlim(xlim)
+        # plt.title(f"{seed}: pre-post values")
+        plt.xlabel("")
+        plt.ylabel(f"Median {cluster_label} ({cluster_id})")
+        plt.tight_layout()
+        sns.despine()
+        plt.savefig(os.path.join(
+            plot_dir, f"{file_suffix}_cluster-{cluster_id:02d}_{cluster_label}_lineplot_pre_post.png"),
+            dpi=300)
+        plt.show()
 
 
-    # --- Plot 2: Difference values
-    plt.figure(figsize=(7, 8))
-    plt.axhline(0, color="grey", linewidth=2, alpha=0.5)
-    sns.boxplot(data=this_diff, x="group", y="post_minus_pre", hue="group", showfliers=False, palette=palette,
-                linewidth=2.5,)
-    sns.stripplot(data=this_diff, x="group", y="post_minus_pre", jitter=True, alpha=0.5, color="black",)
-    # y-position above data
-    y_max = this_diff["post_minus_pre"].max()
-    y_min = this_diff["post_minus_pre"].min()
-    h = 0.02 * (y_max - y_min)
-    y = y_max + h
-    # x positions of groups
-    x1 = 0
-    x2 = 1
-    # significance bracket
-    plt.plot( [x1, x1, x2, x2], [y, y + h, y + h, y], lw=2, c="black")
-    # stars
-    plt.text((x1 + x2) * 0.5, y + h, stars, ha="center", va="bottom", fontsize=16, weight="bold",)
-    plt.title(f"{seed}: difference (post - pre)")
-    plt.xlabel("")
-    plt.ylabel(f"Mean value in {cluster_label}")
-    sns.despine()
-    plt.tight_layout()
-    plt.savefig(os.path.join(
-        plot_dir, f"{file_suffix}_cluster-{cluster_id:02d}_{cluster_label}_boxplot_difference_by_group.png"), dpi=300)
-    plt.show()
+    # --- Plot group effects (boxplot with difference per group, lineplot pre-post)
+    elif effect == "group":
+        # --- Plot 1: Pre/Post trajectories
+        plt.figure(figsize=(2.5, 4))
+        plt.axhline(0, color="grey", linewidth=1.5, alpha=0.5)
+        sns.lineplot(data=this_plot, x="run", y="value", hue="group", units="subject_id", estimator=None, alpha=0.3,
+                     linewidth=1, palette=palette, legend=False,)
+        sns.pointplot(data=this_plot, x="run", y="value", hue="group", errorbar="se", markers="o", linestyles="-",
+                      linewidth=2, palette=palette, legend=False,)
+        plt.xlabel("")
+        plt.ylabel(f"Median {cluster_label} ({cluster_id})")
+        plt.tight_layout()
+        sns.despine()
+        plt.savefig(os.path.join(
+            plot_dir, f"{file_suffix}_cluster-{cluster_id:02d}_{cluster_label}_lineplot_pre_post_by_group.png"),
+            dpi=300)
+        plt.show()
+
+        # --- Plot 2: Difference values
+        plt.figure(figsize=(2.5, 4))
+        plt.axhline(0, color="grey", linewidth=1.5, alpha=0.5)
+        sns.boxplot(data=this_diff, x="group", y="post_minus_pre", hue="group", showfliers=False, palette=palette,
+                    linewidth=1.5, fill=False, legend=False,)
+        sns.stripplot(data=this_diff, x="group", y="post_minus_pre", hue="group", palette=palette, jitter=True,
+                      alpha=0.6, size=6, legend=False)
+        # y-position above data
+        y_max = this_diff["post_minus_pre"].max()
+        y_min = this_diff["post_minus_pre"].min()
+        h = 0.02 * (y_max - y_min)
+        y = y_max + h
+        # x positions of groups
+        x1 = 0
+        x2 = 1
+        # significance bracket
+        plt.plot( [x1, x1, x2, x2], [y, y + h, y + h, y], lw=1.5, c="black")
+        # stars
+        plt.text((x1 + x2) / 2, y + h, stars, ha="center", va="bottom", fontsize=12, weight="bold",)
+        plt.xlabel("")
+        plt.ylabel(f"Median {cluster_label} ({cluster_id})")
+        sns.despine()
+        plt.tight_layout()
+        plt.savefig(os.path.join(
+            plot_dir, f"{file_suffix}_cluster-{cluster_id:02d}_{cluster_label}_boxplot_difference_by_group.png"), dpi=300)
+        plt.show()
+
+
+    # --- Plot part effects (boxplot with difference per part, lineplot pre-post)
+    elif effect == "part":
+        # --- Plot 1: Pre/Post trajectories
+        plt.figure(figsize=(2.5, 4))
+        plt.axhline(0, color="grey", linewidth=1.5, alpha=0.5)
+        sns.lineplot(data=this_plot, x="run", y="value", hue="part", units="subject_id", estimator=None, alpha=0.3,
+                     linewidth=1, palette=palette_part, legend=False,)
+        sns.pointplot(data=this_plot, x="run", y="value", hue="part", errorbar="se", markers="o", linestyles="-",
+                      linewidth=2, palette=palette_part, legend=False,)
+        plt.xlabel("")
+        plt.ylabel(f"Median {cluster_label} ({cluster_id})")
+        plt.tight_layout()
+        sns.despine()
+        plt.savefig(os.path.join(
+            plot_dir, f"{file_suffix}_cluster-{cluster_id:02d}_{cluster_label}_lineplot_pre_post_by_part.png"),
+            dpi=300)
+        plt.show()
+
+        # --- Plot 2: Difference values
+        plt.figure(figsize=(2.5, 4))
+        plt.axhline(0, color="grey", linewidth=1.5, alpha=0.5)
+        sns.boxplot(data=this_diff, x="part", y="post_minus_pre", hue="part", showfliers=False, palette=palette_part,
+                    linewidth=1.5, fill=False, legend=False)
+        sns.stripplot(data=this_diff, x="part", y="post_minus_pre", hue="part", palette=palette_part, jitter=True,
+                      alpha=0.6, size=6, legend=False)
+        # y-position above data
+        y_max = this_diff["post_minus_pre"].max()
+        y_min = this_diff["post_minus_pre"].min()
+        h = 0.02 * (y_max - y_min)
+        y = y_max + h
+        # x positions of groups
+        x1 = 0
+        x2 = 1
+        # significance bracket
+        plt.plot( [x1, x1, x2, x2], [y, y + h, y + h, y], lw=1.5, c="black")
+        # stars
+        plt.text((x1 + x2) / 2, y + h, stars, ha="center", va="bottom", fontsize=12, weight="bold",)
+        # plt.title(f"{seed}: difference (post - pre)")
+        plt.xlabel("")
+        plt.ylabel(f"Median {cluster_label} ({cluster_id})")
+        sns.despine()
+        plt.tight_layout()
+        plt.savefig(os.path.join(
+            plot_dir, f"{file_suffix}_cluster-{cluster_id:02d}_{cluster_label}_boxplot_difference_by_part.png"), dpi=300)
+        plt.show()
+
+
+    # --- Plot group x part interaction (boxplot with difference per group and part)
+    elif effect == "groupxpart":
+        # --- Plot 1: Difference values
+        plt.figure(figsize=(3.5, 4))
+        plt.axhline(0, color="grey", linewidth=1.5, alpha=0.5)
+        sns.boxplot(data=this_diff, x="part", y="post_minus_pre", hue="group", showfliers=False, palette=palette,
+                    linewidth=1.5, fill=False, legend=False)
+        sns.stripplot(data=this_diff, x="part", y="post_minus_pre", hue="group", palette=palette, jitter=True,
+                      dodge=True, alpha=0.6, size=6, legend=False)
+        # y-position above data
+        y_max = this_diff["post_minus_pre"].max()
+        y_min = this_diff["post_minus_pre"].min()
+        h = 0.02 * (y_max - y_min)
+        y = y_max + h
+        # x positions of groups
+        x1 = 0
+        x2 = 1
+        # significance bracket
+        plt.plot( [x1, x1, x2, x2], [y, y + h, y + h, y], lw=1.5, c="black")
+        # stars
+        plt.text((x1 + x2) / 2, y + h, stars, ha="center", va="bottom", fontsize=12, weight="bold",)
+        # plt.title(f"{seed}: difference (post - pre)")
+        plt.xlabel("")
+        plt.ylabel(f"Median {cluster_label} ({cluster_id})")
+        sns.despine()
+        plt.tight_layout()
+        plt.savefig(os.path.join(
+            plot_dir,
+            f"{file_suffix}_cluster-{cluster_id:02d}_{cluster_label}_boxplot_difference_by_group_x_part.png"),
+            dpi=300
+        )
+        plt.show()
+
+        for part in this_plot["part"].unique():
+            part_plot = this_plot[this_plot["part"] == part]
+
+            # --- Plot 1: Pre/Post trajectories
+            plt.figure(figsize=(2.5, 4))
+            plt.axhline(0, color="grey", linewidth=1.5, alpha=0.5)
+            sns.lineplot(data=part_plot, x="run", y="value", hue="group", units="subject_id", estimator=None, alpha=0.3,
+                         linewidth=1, palette=palette, legend=False,)
+            sns.pointplot(data=part_plot, x="run", y="value", hue="group", errorbar="se", markers="o", linestyles="-",
+                          linewidth=2, palette=palette, legend=False,)
+            plt.xlabel("")
+            plt.ylabel(f"Median {cluster_label} ({cluster_id}); Part {part}")
+            plt.ylim(-0.2, 0.3)
+            plt.tight_layout()
+            sns.despine()
+            plt.savefig(os.path.join(
+                plot_dir,
+                f"{file_suffix}_cluster-{cluster_id:02d}_{cluster_label}_lineplot_pre_post_by_group_part_{part}.png"),
+                dpi=300)
+            plt.show()
+
+    else:
+        raise ValueError("Invalid effect")
