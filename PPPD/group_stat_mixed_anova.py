@@ -9,8 +9,9 @@ from PPPD.subjects import subs, subjects_to_exclude
 from PPPD.utils import get_cluster_table_with_aal_labels
 from PPPD.config import load_config
 from PPPD.plotting import get_colorbar_limits
+from nilearn.glm import threshold_stats_img
 from nilearn.glm.second_level import SecondLevelModel, non_parametric_inference
-from nilearn.image import threshold_img, math_img
+from nilearn.image import threshold_img, math_img, new_img_like
 from nilearn.plotting import plot_stat_map, plot_design_matrix, plot_glass_brain
 from nilearn.masking import intersect_masks
 import numpy as np
@@ -210,32 +211,53 @@ for seed in seeds:
 
 
     # --- Get design matrix for pre-post model and plot it
-    design_df = included_df.merge(participants_df[["subject_id", "group", "part"]], on="subject_id", how="left")
-    design_df["group_code"] = design_df["group"].map(group_mapping)
-    if design_df["group_code"].isna().any():
-        print(design_df[design_df["group_code"].isna()][["subject_id", "group"]])
-        raise ValueError("Some subjects have missing or unmapped group labels.")
-    design_df["part_code"] = design_df["part"].map({
-        1: -1,
-        2: 1
-    })
-    design_df["groupxpart"] = (design_df["group_code"] * design_df["part_code"])
-    # keep exact image order
-    diff_imgs = design_df["diff_img"].tolist()
-    # intercept: main effect stimulation/time
-    # group: 2-way interaction stimulation x group
-    # part: 2-way interaction stimulation x part
-    # groupxpart: 3-way interaction stimulation x group x part
-    second_level_design = pd.DataFrame({
-        "intercept": np.ones(len(design_df)),
-        "group": design_df["group_code"].astype(float),
-        "part": design_df["part_code"].astype(float),
-        "groupxpart": design_df["groupxpart"].astype(float),
-    })
-    print("Number of difference images:", len(diff_imgs))
-    print("Design matrix shape:", second_level_design.shape)
-    plot_design_matrix(second_level_design)
-    plt.show()
+    # depends on variable part as for part = 1 and 2 no predictor part and group:part are used
+    if part is None:
+        design_df = included_df.merge(participants_df[["subject_id", "group", "part"]], on="subject_id", how="left")
+        design_df["group_code"] = design_df["group"].map(group_mapping)
+        if design_df["group_code"].isna().any():
+            print(design_df[design_df["group_code"].isna()][["subject_id", "group"]])
+            raise ValueError("Some subjects have missing or unmapped group labels.")
+        design_df["part_code"] = design_df["part"].map({
+            1: -1,
+            2: 1
+        })
+        design_df["groupxpart"] = (design_df["group_code"] * design_df["part_code"])
+        # keep exact image order
+        diff_imgs = design_df["diff_img"].tolist()
+        # intercept: main effect stimulation/time
+        # group: 2-way interaction stimulation x group
+        # part: 2-way interaction stimulation x part
+        # groupxpart: 3-way interaction stimulation x group x part
+        second_level_design = pd.DataFrame({
+            "intercept": np.ones(len(design_df)),
+            "group": design_df["group_code"].astype(float),
+            "part": design_df["part_code"].astype(float),
+            "groupxpart": design_df["groupxpart"].astype(float),
+        })
+        print("Number of difference images:", len(diff_imgs))
+        print("Design matrix shape:", second_level_design.shape)
+        plot_design_matrix(second_level_design)
+        plt.show()
+
+    else:
+        design_df = included_df.merge(participants_df[["subject_id", "group"]], on="subject_id", how="left")
+        design_df["group_code"] = design_df["group"].map(group_mapping)
+        if design_df["group_code"].isna().any():
+            print(design_df[design_df["group_code"].isna()][["subject_id", "group"]])
+            raise ValueError("Some subjects have missing or unmapped group labels.")
+        # keep exact image order
+        diff_imgs = design_df["diff_img"].tolist()
+        # intercept: main effect stimulation/time
+        # group: 2-way interaction stimulation x group
+        second_level_design = pd.DataFrame({
+            "intercept": np.ones(len(design_df)),
+            "group": design_df["group_code"].astype(float),
+        })
+        print("Number of difference images:", len(diff_imgs))
+        print("Design matrix shape:", second_level_design.shape)
+        plot_design_matrix(second_level_design)
+        plt.show()
 
 
     # --- Get statistical output folders for different effects
@@ -243,20 +265,61 @@ for seed in seeds:
     os.makedirs(stats_output_dir, exist_ok=True)
 
 
-    # --- PARAMETRIC TEST (voxel-wise two sample t-test unpaired)
+
+    # -----------------------------------------------------------------------------------------------------------------
+    # PARAMETRIC TEST (voxel-wise two sample t-test unpaired)
+    # -----------------------------------------------------------------------------------------------------------------
+
     # fit model (here: z-scores are used, also possible: 'z_score', 'stat', 'p_value', 'effect_size', 'effect_variance', 'all')
     second_level_model = SecondLevelModel(mask_img=analysis_mask)
     second_level_model = second_level_model.fit(diff_imgs, design_matrix=second_level_design)
     z_map = second_level_model.compute_contrast(effect, output_type='z_score')
 
-    # Significance test:
+    # --- Significance test:
     # Version 1: abs(z) > 3.09 (equivalent to p < 0.001 one-sided test), cluster size > 10 voxels
     # z(threshold)=3.09 for p=0.001 when testing one-sided; 3.29 for two-sided
-    z_threshold_p001 = 3.09
-    thresholded_map1 = threshold_img(z_map, cluster_threshold=10, threshold=z_threshold_p001, two_sided=True)
+    thresholded_map1, z_threshold_p001 = threshold_stats_img(
+        z_map,
+        alpha=0.001,
+        height_control="fpr", # meaning voxelwise uncorrected thresholding
+        cluster_threshold=10,
+        two_sided=True
+    )
     thr1_data = thresholded_map1.get_fdata()
-    # plot thresholded maps if there are any voxels/clusters left
+    print(f"Uncorrected voxel-wise threshold: |z| > {z_threshold_p001:.4f}")
+
     if np.any(thr1_data != 0):
+        # --- Save nifti of uncorrected t-test
+        save_thresh_map_dir = os.path.join(stats_output_dir, "uncorrected_maps")
+        os.makedirs(save_thresh_map_dir, exist_ok=True)
+
+        # Split thresholded image into positive and negative image and save
+        # positive image
+        if np.any(thr1_data > 0):
+            positive_map = new_img_like(thresholded_map1, np.where(thr1_data > 0, thr1_data, 0))
+            save_pos_thresh_map = os.path.join(save_thresh_map_dir, f"{file_suffix}_positive_thresh_map.nii.gz")
+            positive_map.to_filename(save_pos_thresh_map)
+            print("Saved positive cluster map.")
+        else:
+            print("No positive significant clusters.")
+
+        # negative image
+        if np.any(thr1_data < 0):
+            negative_map = new_img_like(thresholded_map1, np.where(thr1_data < 0, thr1_data, 0))
+            save_neg_thresh_map = os.path.join(save_thresh_map_dir, f"{file_suffix}_negative_thresh_map.nii.gz")
+            negative_map.to_filename(save_neg_thresh_map)
+
+            # save additionally an image with the absolute values of negative clusters for visualization only
+            negative_display_map = new_img_like(thresholded_map1, np.where(thr1_data < 0, np.abs(thr1_data), 0))
+            save_neg_thresh_display_map = os.path.join(save_thresh_map_dir,
+                                                       f"{file_suffix}_negative_thresh_display_map.nii.gz")
+            negative_display_map.to_filename(save_neg_thresh_display_map)
+            print("Saved negative cluster map.")
+        else:
+            print("No negative significant clusters.")
+
+
+        # --- Plot thresholded maps if there are any voxels/clusters left
         # get colorbar thresholds
         vmin, vmax = get_colorbar_limits(data=thr1_data, threshold=z_threshold_p001, two_sided=True)
         # plot_stat_map(thresholded_map1, display_mode='mosaic', cmap="RdBu_r",
@@ -271,21 +334,37 @@ for seed in seeds:
         os.makedirs(stats_output_path, exist_ok=True)
         display.savefig(os.path.join(stats_output_path, f"{file_suffix}_uncorrected_p001_cluster10.png"))
         plt.show()
-    else:
-        print("No suprathreshold clusters; skipping plots.")
 
-    # get cluster table with anatomical labels
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+        # --- Get cluster table with anatomical labels
         cluster_table1 = get_cluster_table_with_aal_labels(
-            stat_img=thresholded_map1,
-            stat_threshold=3.09,
+            stat_img=z_map,
+            stat_threshold=z_threshold_p001,
             cluster_threshold=10,
             two_sided=True
         )
+        # get voxel size and add cluster size in number of voxels to the table
+        voxel_sizes = z_map.header.get_zooms()[:3]
+        voxel_volume_mm3 = np.prod(voxel_sizes)
+
+        cluster_sizes_mm3 = pd.to_numeric(cluster_table1["Cluster Size (mm3)"], errors="coerce")
+        cluster_size_voxels = (cluster_sizes_mm3 / voxel_volume_mm3).round().astype("Int64")
+        insert_position = cluster_table1.columns.get_loc("Cluster Size (mm3)") + 1
+        cluster_table1.insert(insert_position, "Cluster Size (voxels)", cluster_size_voxels)
+
+        # save uncorrected cluster tables
+        uncorrected_table_dir = os.path.join(stats_output_dir, "uncorrected_tables")
+        os.makedirs(uncorrected_table_dir, exist_ok=True)
+        uncorrected_table_path = os.path.join(uncorrected_table_dir, f"{file_suffix}_cluster_table_uncorrected.csv")
+        cluster_table1.to_csv(uncorrected_table_path, index=False)
+
+    else:
+        print("No suprathreshold clusters; skipping maps, plots and table.")
 
 
-    # --- NON-PARAMETRIC TESTS: permutation inference with cluster-level correction
+
+    # -----------------------------------------------------------------------------------------------------------------
+    # NON-PARAMETRIC TESTS: permutation inference with cluster-level correction
+    # -----------------------------------------------------------------------------------------------------------------
     # threshold is in p-scale, not z-scale;
     # threshold=0.001 corresponds to a cluster-forming threshold of p < .001
     with warnings.catch_warnings():
@@ -305,10 +384,7 @@ for seed in seeds:
             verbose=1,
         )
 
-    # -------------------------------------------------------------------------
-    # Prepare non-parametric results
-    # -------------------------------------------------------------------------
-
+    # --- Prepare non-parametric results
     # corrected p < .05  <=>  -log10(p) > 1.30103
     neglog_alpha_05 = -np.log10(0.05)
 
@@ -326,17 +402,13 @@ for seed in seeds:
 
     has_sig_clusters = np.any(sig_mask)
 
-    # -------------------------------------------------------------------------
-    # 03_tvalues
-    # Diagnostic plot:
-    # t-statistics only inside cluster-mass FWER significant clusters
-    # -------------------------------------------------------------------------
 
+    # --- Diagnostic plot: 02_tvalues
+    # t-statistics only inside cluster-mass FWER significant clusters
     tvalue_output_dir = os.path.join(stats_output_dir, "02_tvalues")
     os.makedirs(tvalue_output_dir, exist_ok=True)
 
     if has_sig_clusters:
-
         signed_t_sig = math_img(
             f"np.where(logp > {neglog_alpha_05}, t, 0)",
             logp=logp_img,
@@ -355,8 +427,8 @@ for seed in seeds:
             f"  max t              = {np.nanmax(sig_t_values):.3f}"
         )
 
+        # plot initial t-values in significant clusters
         fig = plt.figure(figsize=(9, 5))
-
         display = plot_glass_brain(
             signed_t_sig,
             threshold=0,
@@ -367,19 +439,9 @@ for seed in seeds:
             title=None,
             colorbar=True,
         )
-
-        display.frame_axes.figure.suptitle(
-            f"t-statistics within cluster-mass FWER significant clusters\n"
-            f"{base_title}; effect: {effect} | corrected p < .05"
-        )
-
-        display.savefig(
-            os.path.join(
-                tvalue_output_dir,
-                f"{file_suffix}_{effect}_tvalues_in_significant_clusters.png",
-            )
-        )
-
+        display.frame_axes.figure.suptitle(f"t-statistics within cluster-mass FWER significant clusters\n{base_title}; "
+                                           f"effect: {effect} | corrected p < .05")
+        display.savefig(os.path.join(tvalue_output_dir, f"{file_suffix}_{effect}_tvalues_in_significant_clusters.png"))
         display.close()
         plt.close(fig)
 
@@ -387,22 +449,16 @@ for seed in seeds:
         signed_t_sig = None
         print("No significant clusters; skipping t-value plot.")
 
-    # -------------------------------------------------------------------------
-    # Create unsigned thresholded cluster-mass significance image
-    # -------------------------------------------------------------------------
 
+    # --- Create unsigned thresholded cluster-mass significance image
     logp_mass_thr = threshold_img(
         logp_img,
         threshold=neglog_alpha_05,
         two_sided=False,  # logp_max_mass itself is unsigned
     )
 
-    # -------------------------------------------------------------------------
-    # Identify significant clusters
-    # -------------------------------------------------------------------------
-
+    # --- Identify significant clusters
     if not has_sig_clusters:
-
         print("No clusters survive permutation cluster-mass FWER correction.")
 
         cluster_table_perm_mass = None
@@ -410,38 +466,26 @@ for seed in seeds:
         signed_logp_mass_thr = None
 
     else:
-
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-
-            cluster_table_perm_mass, label_maps = (
-                get_cluster_table_with_aal_labels(
-                    stat_img=logp_mass_thr,
-                    stat_threshold=neglog_alpha_05,
-                    cluster_threshold=0,
-                    two_sided=False,
-                    return_label_maps=True,
-                )
+        cluster_table_perm_mass, label_maps = (
+            get_cluster_table_with_aal_labels(
+                stat_img=logp_mass_thr,
+                stat_threshold=neglog_alpha_05,
+                cluster_threshold=0,
+                two_sided=False,
+                return_label_maps=True,
             )
+        )
 
-        # ---------------------------------------------------------------------
-        # Get one cluster-ID image
-        # ---------------------------------------------------------------------
-
+        # --- Get one cluster-ID image
         if (
                 cluster_table_perm_mass.empty
                 or label_maps is None
                 or len(label_maps) == 0
         ):
-            print(
-                "No cluster label map returned despite significant voxels. "
-                "Skipping cluster-wise direction assignment."
-            )
-
+            print("No cluster label map returned despite significant voxels. Skipping cluster-wise direction assignment.")
             signed_logp_mass_thr = None
 
         else:
-
             # The returned label image contains integer cluster IDs:
             # background = 0, clusters = 1, 2, 3, ...
             label_img = label_maps[0]
@@ -452,11 +496,7 @@ for seed in seeds:
 
             print(f"Found {len(cluster_ids)} significant cluster(s).")
 
-            # -----------------------------------------------------------------
-            # Assign ONE direction to each complete cluster
-            # based on mean non-parametric t-value
-            # -----------------------------------------------------------------
-
+            # --- Assign ONE direction to each complete cluster based on mean non-parametric t-value
             signed_logp_data = np.zeros_like(logp_data, dtype=float)
 
             cluster_directions = []
@@ -494,9 +534,7 @@ for seed in seeds:
                     sign = 0
 
                 # Give all voxels of this cluster the same direction
-                signed_logp_data[cluster_mask] = (
-                        sign * logp_data[cluster_mask]
-                )
+                signed_logp_data[cluster_mask] = (sign * logp_data[cluster_mask])
 
                 cluster_mean_t_values.append(mean_t)
                 cluster_directions.append(direction)
@@ -506,47 +544,25 @@ for seed in seeds:
                     f"mean t = {mean_t:.3f} -> {direction}"
                 )
 
-            # -----------------------------------------------------------------
-            # Convert cluster-wise signed logp data back to NIfTI image
-            # -----------------------------------------------------------------
 
+            # --- Convert cluster-wise signed logp data back to NIfTI image
             signed_logp_mass_thr = nib.Nifti1Image(
                 signed_logp_data.astype(np.float32),
                 affine=logp_img.affine,
                 header=logp_img.header.copy(),
             )
 
-            # -----------------------------------------------------------------
-            # Save thresholded cluster-wise signed logp map
-            # -----------------------------------------------------------------
-
-            perm_mask_dir = os.path.join(
-                stats_output_dir,
-                "tresh_cluster_masks"
-            )
+            # --- Save thresholded cluster-wise signed logp map
+            perm_mask_dir = os.path.join(stats_output_dir, "tresh_cluster_masks")
             os.makedirs(perm_mask_dir, exist_ok=True)
 
-            signed_logp_mass_path = os.path.join(
-                perm_mask_dir,
-                f"{file_suffix}_signed_logp_clustermass_fwer05.nii.gz"
-            )
-
+            signed_logp_mass_path = os.path.join(perm_mask_dir, f"{file_suffix}_signed_logp_clustermass_fwer05.nii.gz")
             signed_logp_mass_thr.to_filename(signed_logp_mass_path)
+            print(f"Saved thresholded signed cluster-mass FWER map: {signed_logp_mass_path}")
 
-            print(
-                f"Saved thresholded signed cluster-mass FWER map: "
-                f"{signed_logp_mass_path}"
-            )
 
-            # -----------------------------------------------------------------
-            # 03_nonparametric
-            # Plot cluster-mass FWER corrected map with cluster-wise direction
-            # -----------------------------------------------------------------
-
-            nonparam_output_dir = os.path.join(
-                stats_output_dir,
-                "03_nonparametric",
-            )
+            # --- Plot cluster-mass FWER corrected map with cluster-wise direction: 03_nonparametric
+            nonparam_output_dir = os.path.join(stats_output_dir, "03_nonparametric")
             os.makedirs(nonparam_output_dir, exist_ok=True)
 
             signed_data = signed_logp_mass_thr.get_fdata()
@@ -558,7 +574,6 @@ for seed in seeds:
             )
 
             fig = plt.figure(figsize=(9, 5))
-
             display = plot_glass_brain(
                 signed_logp_mass_thr,
                 cmap="RdBu_r",
@@ -571,39 +586,20 @@ for seed in seeds:
                 title=None,
                 colorbar=True,
             )
-
-            display.frame_axes.figure.suptitle(
-                f"difference map permutation test cluster-mass FWER\n"
-                f"{base_title}; effect: {effect} | corrected p < .05"
-            )
-
-            display.savefig(
-                os.path.join(
-                    nonparam_output_dir,
-                    f"{file_suffix}_{effect}_perm_clustermass_fwer05.png",
-                )
-            )
-
+            display.frame_axes.figure.suptitle(f"difference map permutation test cluster-mass FWER\n{base_title}; "
+                                               f"effect: {effect} | corrected p < .05")
+            display.savefig(os.path.join(nonparam_output_dir, f"{file_suffix}_{effect}_perm_clustermass_fwer05.png"))
             display.close()
             plt.close(fig)
 
-            # -----------------------------------------------------------------
-            # Cluster table
-            # -----------------------------------------------------------------
 
+            # --- Cluster table
             # Convert -log10(p) back to corrected p-value.
             # The cluster table was generated from the UNSIGNED logp image.
-            cluster_table_perm_mass["p-value"] = (
-                    10 ** (-np.abs(cluster_table_perm_mass["Peak Stat"]))
-            )
+            cluster_table_perm_mass["p-value"] = (10 ** (-np.abs(cluster_table_perm_mass["Peak Stat"])))
 
-            # Add direction information
-            #
-            # This assumes rows of the cluster table correspond to the returned
-            # cluster IDs. If your helper returns additional subpeaks, see note
-            # below.
+            # Add direction information (this assumes rows of the cluster table correspond to the returned cluster IDs.)
             if len(cluster_table_perm_mass) == len(cluster_ids):
-
                 cluster_table_perm_mass["Mean t"] = cluster_mean_t_values
                 cluster_table_perm_mass["Direction"] = cluster_directions
 
@@ -622,113 +618,61 @@ for seed in seeds:
                 }
             )
 
-            cluster_table_dir = os.path.join(
-                stats_output_dir,
-                "cluster_tables",
-            )
+            cluster_table_dir = os.path.join(stats_output_dir, "cluster_tables")
             os.makedirs(cluster_table_dir, exist_ok=True)
 
-            cluster_table_path = os.path.join(
-                cluster_table_dir,
-                f"{file_suffix}_{effect}_cluster_table_perm_mass.csv",
-            )
+            cluster_table_path = os.path.join(cluster_table_dir, f"{file_suffix}_{effect}_cluster_table_perm_mass.csv")
+            cluster_table_perm_mass.to_csv(cluster_table_path, index=False)
 
-            cluster_table_perm_mass.to_csv(
-                cluster_table_path,
-                index=False,
-            )
 
-            # -----------------------------------------------------------------
-            # Save significant cluster masks
-            # -----------------------------------------------------------------
-
-            posthoc_mask_dir = os.path.join(
-                stats_output_dir,
-                "sig_cluster_masks",
-            )
-
-            positive_dir = os.path.join(
-                posthoc_mask_dir,
-                "positive",
-            )
-
-            negative_dir = os.path.join(
-                posthoc_mask_dir,
-                "negative",
-            )
-
-            signed_dir = os.path.join(
-                posthoc_mask_dir,
-                "signed",
-            )
+            # --- Save significant cluster masks
+            posthoc_mask_dir = os.path.join(stats_output_dir, "sig_cluster_masks")
+            positive_dir = os.path.join(posthoc_mask_dir, "positive")
+            negative_dir = os.path.join(posthoc_mask_dir, "negative")
+            signed_dir = os.path.join(posthoc_mask_dir, "signed")
 
             os.makedirs(positive_dir, exist_ok=True)
             os.makedirs(negative_dir, exist_ok=True)
             os.makedirs(signed_dir, exist_ok=True)
 
-            # -----------------------------------------------------------------
-            # Save signed cluster-mass significance map
-            # -----------------------------------------------------------------
 
+            # Save signed cluster-mass significance map
             signed_logp_mass_path = os.path.join(
                 signed_dir,
                 f"{file_suffix}_{effect}_signed_logp_clustermass_fwer05.nii.gz",
             )
+            signed_logp_mass_thr.to_filename(signed_logp_mass_path)
 
-            signed_logp_mass_thr.to_filename(
-                signed_logp_mass_path
-            )
-
-            # -----------------------------------------------------------------
             # Save positive cluster-ID map
-            # -----------------------------------------------------------------
-
             if np.any(positive_cluster_ids > 0):
-
                 positive_cluster_img = nib.Nifti1Image(
                     positive_cluster_ids,
                     affine=label_img.affine,
                     header=label_img.header.copy(),
                 )
-
                 positive_cluster_path = os.path.join(
                     positive_dir,
                     f"{file_suffix}_{effect}_positive_cluster_id_map.nii.gz",
                 )
-
-                positive_cluster_img.to_filename(
-                    positive_cluster_path
-                )
-
+                positive_cluster_img.to_filename(positive_cluster_path)
                 print("Saved positive cluster ID map.")
-
             else:
                 positive_cluster_img = None
                 print("No positive significant clusters.")
 
-            # -----------------------------------------------------------------
             # Save negative cluster-ID map
-            # -----------------------------------------------------------------
-
             if np.any(negative_cluster_ids > 0):
-
                 negative_cluster_img = nib.Nifti1Image(
                     negative_cluster_ids,
                     affine=label_img.affine,
                     header=label_img.header.copy(),
                 )
-
                 negative_cluster_path = os.path.join(
                     negative_dir,
                     f"{file_suffix}_{effect}_negative_cluster_id_map.nii.gz",
                 )
-
-                negative_cluster_img.to_filename(
-                    negative_cluster_path
-                )
-
+                negative_cluster_img.to_filename(negative_cluster_path)
                 print("Saved negative cluster ID map.")
-
             else:
                 negative_cluster_img = None
                 print("No negative significant clusters.")
