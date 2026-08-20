@@ -257,10 +257,6 @@ def get_posthoc_cluster_mask(feature, group_comparison, pre_post_diff=True, dire
     return os.path.join(mask_dir, filename)
 
 
-# Get mask of significant cluster of pre-post analysis
-
-
-
 # Get signed cluster-mass corrected permutation map
 def get_signed_posthoc_map(feature, group_comparison, part=None, seed=None,):
     if feature == "seed_based" and seed is None:
