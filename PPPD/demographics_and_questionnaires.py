@@ -222,7 +222,7 @@ _ = normality_check(df, "Neo.Skala_n")
 _ = mwu_report(df, "Neo.Skala_n")
 patients = df.loc[df['group'] == 'patient', 'Neo.Skala_n'].dropna()
 controls = df.loc[df['group'] == 'control', 'Neo.Skala_n'].dropna()
-result = ttest_ind(controls, patients, equal_var=False)  # Welch-t-Test
+result = ttest_ind(patients, controls, equal_var=False)  # Welch-t-Test
 print(f"t = {result.statistic:.3f}")
 print(f"df = {result.df:.3f}")
 print(f"p = {result.pvalue:.3f}")
@@ -233,7 +233,7 @@ _ = normality_check(df, "Neo.Skala_e")
 _ = mwu_report(df, "Neo.Skala_e")
 patients = df.loc[df['group'] == 'patient', 'Neo.Skala_e'].dropna()
 controls = df.loc[df['group'] == 'control', 'Neo.Skala_e'].dropna()
-result = ttest_ind(controls, patients, equal_var=False)  # Welch-t-Test
+result = ttest_ind(patients, controls, equal_var=False)  # Welch-t-Test
 print(f"t = {result.statistic:.3f}")
 print(f"df = {result.df:.3f}")
 print(f"p = {result.pvalue:.3f}")
@@ -244,7 +244,7 @@ _ = normality_check(df, "Neo.Skala_o")
 _ = mwu_report(df, "Neo.Skala_o")
 patients = df.loc[df['group'] == 'patient', 'Neo.Skala_o'].dropna()
 controls = df.loc[df['group'] == 'control', 'Neo.Skala_o'].dropna()
-result = ttest_ind(controls, patients, equal_var=False)  # Welch-t-Test
+result = ttest_ind(patients, controls, equal_var=False)  # Welch-t-Test
 print(f"t = {result.statistic:.3f}")
 print(f"df = {result.df:.3f}")
 print(f"p = {result.pvalue:.3f}")
@@ -255,7 +255,7 @@ _ = normality_check(df, "Neo.Skala_v")
 _ = mwu_report(df, "Neo.Skala_v")
 patients = df.loc[df['group'] == 'patient', 'Neo.Skala_v'].dropna()
 controls = df.loc[df['group'] == 'control', 'Neo.Skala_v'].dropna()
-result = ttest_ind(controls, patients, equal_var=False)  # Welch-t-Test
+result = ttest_ind(patients, controls, equal_var=False)  # Welch-t-Test
 print(f"t = {result.statistic:.3f}")
 print(f"df = {result.df:.3f}")
 print(f"p = {result.pvalue:.3f}")
@@ -266,7 +266,7 @@ _ = normality_check(df, "Neo.Skala_g")
 _ = mwu_report(df, "Neo.Skala_g")
 patients = df.loc[df['group'] == 'patient', 'Neo.Skala_g'].dropna()
 controls = df.loc[df['group'] == 'control', 'Neo.Skala_g'].dropna()
-result = ttest_ind(controls, patients, equal_var=False)  # Welch-t-Test
+result = ttest_ind(patients, controls, equal_var=False)  # Welch-t-Test
 print(f"t = {result.statistic:.3f}")
 print(f"df = {result.df:.3f}")
 print(f"p = {result.pvalue:.3f}")
