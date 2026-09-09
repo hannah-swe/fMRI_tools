@@ -2,10 +2,11 @@
 paths:
   analysis_path: /data_wgs04/ag-sensomotorik/PPPD/analysis/
   output_path: /data_wgs04/ag-sensomotorik/PPPD/analysis/YOUR_OUTPUT_FOLDER
+  output_path_pre_post: /data_wgs04/ag-sensomotorik/PPPD/analysis/YOUR_OUTPUT_FOLDER/pre_post_analysis/
   mask_path: /data_wgs04/ag-sensomotorik/PPPD/masks/
   aal_path: /data_wgs04/ag-sensomotorik/Python_analysis/nilearn_data/aal_3v2/
   suit_path: /data_wgs04/ag-sensomotorik/Python_analysis/cerebellar_atlases/Diedrichsen_2009/
-  main_value_tables_path: //data_wgs04/ag-sensomotorik/PPPD/main_value_tables/
+  main_value_tables_path: /data_wgs04/ag-sensomotorik/PPPD/main_value_tables/
   posturography_path: /data_wgs04/ag-sensomotorik/PPPD/data/posturography/
   connectivity_path: /data_wgs04/ag-sensomotorik/PPPD/analysis/YOUR_OUTPUT_FOLDER
 
@@ -65,6 +66,13 @@ analysis:
 
   # supported comparisons: "pat>HC", "HC>pat"
   group_comparison: "pat>HC"
+
+  # supported effects for pre-post analysis:
+  # "intercept": main effect stimulation/time (tests difference against 0)
+  # "group": 2-way interaction stimulation x group (main effect of group on the difference measure)
+  # "part": 2-way interaction stimulation x part (main effect of part on the difference measure)
+  # "groupxpart": 3-way interaction stimulation x group x part
+  effect: "intercept"
 
 
 # possibility to change used analysis mask strategy
