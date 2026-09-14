@@ -157,8 +157,10 @@ for seed in seeds:
          if len(sub_mask_imgs) == 0:
              raise ValueError("No subjects mask found.")
          analysis_mask = intersect_masks(sub_mask_imgs, threshold=threshold_mask)
-         # save_mask_path = os.path.join(output_dir, "masks", f"group_mask_{file_suffix}.nii.gz")
-         # analysis_mask.to_filename(save_mask_path)
+         save_mask_dir = os.path.join(output_dir, "masks")
+         os.makedirs(save_mask_dir, exist_ok=True)
+         save_mask_path = os.path.join(save_mask_dir, f"group_mask_{file_suffix}.nii.gz")
+         analysis_mask.to_filename(save_mask_path)
     # use predefined mask; cave: resample before to same MNI space HALFpipe is using
     elif mask_strategy == "predefined":
         if predefined_mask is None:
@@ -168,8 +170,7 @@ for seed in seeds:
         raise ValueError(f"Unknown mask strategy {mask_strategy}")
 
 
-    # --- Compute two sample t-test unpaired:
-    # get design matrix and plot it
+    # --- Get design matrix and plot it:
     design_df = participants_df[participants_df["subject_id"].isin(included_subjects)].copy()
     design_df = design_df.set_index("subject_id").loc[included_subjects].reset_index()
     group_contrast = design_df["group"].map(group_mapping).values
@@ -290,7 +291,7 @@ for seed in seeds:
         cluster_table1.to_csv(uncorrected_table_path, index=False)
 
     else:
-        print("No suprathreshold clusters; skipping plots.")
+        print("No suprathreshold clusters; skipping maps, plots and table.")
 
 
 
@@ -313,6 +314,13 @@ for seed in seeds:
             n_jobs=8,                # adapt to your system
             verbose=1,
         )
+
+    # Save voxelwise t-value map
+    t_map = perm_out["t"]
+    t_map_dir = os.path.join(output_dir, "t_maps")
+    os.makedirs(t_map_dir, exist_ok=True)
+    t_map_path = os.path.join(t_map_dir, f"{file_suffix}_tmap.nii.gz")
+    t_map.to_filename(t_map_path)
 
     # Convert corrected -log10(p) maps into thresholded views (corrected p < .05  <=>  -log10(p) > 1.30103)
     neglog_alpha_05 = -np.log10(0.05)
