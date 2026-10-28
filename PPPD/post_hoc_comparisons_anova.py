@@ -32,11 +32,13 @@ seed = config["analysis"]["seeds"][0] # List of supported seeds:
                                     #  "HippocampusL", "HippocampusR"
                                     # "PrecuneusL", "PrecuneusR"
 group_comparison = config["analysis"]["group_comparison"] # supported comparisons: "pat>HC", "HC>pat"
-direction = "positive" # possible directions: "positive", "negative"
+direction = "negative" # possible directions: "positive", "negative"
 effect = config["analysis"]["effect"]
 # define color palette for plotting
 palette = {"control": "teal", "patient": "hotpink"}
 palette_part = {1: "deepskyblue", 2: "darkblue"}
+palette_time = {"pre": "teal", "post": "hotpink"}
+
 
 print(f"Used configuration parameters:\n"
       f"task = {task}\nruns = {runs}\npart = {part}\nfeature = {feature}\nseed = {seed}\n"
@@ -73,6 +75,11 @@ else:
 file_suffix = f"{file_suffix}_{part_label}_{direction}"
 
 
+# --- Get path for significant cluster masks
+mask_path = os.path.join(output_dir, "sig_cluster_masks", f"{direction}",
+                         f"{feature}_{seed}_{group_comparison}_{part_label}_{effect}_{direction}_cluster_id_map.nii.gz")
+
+
 # --- Choose subjects depending on experimental part and exclude subjects who participated in both parts:
 selected_subs = get_selected_subject_list(part, subs, subjects_to_exclude)
 
@@ -80,8 +87,6 @@ selected_subs = get_selected_subject_list(part, subs, subjects_to_exclude)
 # --- Load data:
 # initialize lists for derivatives, subject ids and mask images
 included_rows = []
-mask_path = os.path.join(output_dir, "sig_cluster_masks", f"{direction}",
-                         f"{feature}_{seed}_{group_comparison}_{part_label}_{effect}_{direction}_cluster_id_map.nii.gz")
 
 for s in selected_subs:
     # get full subject id
@@ -265,6 +270,7 @@ for _, cluster_row in cluster_info_df.iterrows():
 
         # pre/run-01
         pre_voxels = apply_mask(row["pre_img"], single_cluster_mask)
+        pre_mean = np.mean(pre_voxels)
         pre_median = np.median(pre_voxels)
         rows.append({
             "cluster": cluster_id,
@@ -272,11 +278,13 @@ for _, cluster_row in cluster_info_df.iterrows():
             "group": group,
             "part": part,
             "run": "pre",
-            "value": pre_median
+            "mean": pre_mean,
+            "median": pre_median,
         })
 
         # post/run-02
         post_voxels = apply_mask(row["post_img"], single_cluster_mask)
+        post_mean = np.mean(post_voxels)
         post_median = np.median(post_voxels)
         rows.append({
             "cluster": cluster_id,
@@ -284,7 +292,8 @@ for _, cluster_row in cluster_info_df.iterrows():
             "group": group,
             "part": part,
             "run": "post",
-            "value": post_median
+            "mean": post_mean,
+            "median": post_median,
         })
 
     print (f"Finished extraction for cluster {cluster_id}.")
@@ -293,7 +302,7 @@ plot_df = pd.DataFrame(rows)
 
 
 # --- Get dataframe with difference values
-diff_df = (plot_df.pivot(index=["cluster", "subject_id", "group", "part"], columns="run", values="value").reset_index())
+diff_df = (plot_df.pivot(index=["cluster", "subject_id", "group", "part"], columns="run", values="mean").reset_index())
 diff_df["post_minus_pre"] = diff_df["post"] - diff_df["pre"]
 
 
@@ -371,16 +380,16 @@ for cluster_id in sorted(plot_df["cluster"].unique()):
         # --- Plot 1: Pre/Post trajectories
         plt.figure(figsize=(2.5, 4))
         plt.axhline(0, color="grey", linewidth=1.5, alpha=0.5)
-        sns.lineplot(data=this_plot, x="run", y="value", hue="group", units="subject_id", estimator=None, alpha=0.3,
+        sns.lineplot(data=this_plot, x="run", y="mean", hue="group", units="subject_id", estimator=None, alpha=0.3,
                      linewidth=1, palette=palette, legend=False,)
-        sns.pointplot(data=this_plot, x="run", y="value", hue="group", errorbar="se", markers="o", linestyles="-",
+        sns.pointplot(data=this_plot, x="run", y="mean", hue="group", errorbar="se", markers="o", linestyles="-",
                       linewidth=2, palette=palette, legend=False,)
         plt.xlabel("")
-        plt.ylabel(f"Median {cluster_label} ({cluster_id})")
+        plt.ylabel(f"Mean {cluster_label} ({cluster_id})")
         plt.tight_layout()
         sns.despine()
         plt.savefig(os.path.join(
-            plot_dir, f"{file_suffix}_cluster-{cluster_id:02d}_{cluster_label}_lineplot_pre_post_by_group.png"),
+            plot_dir, f"{file_suffix}_mean_cluster-{cluster_id:02d}_{cluster_label}_lineplot_pre_post_by_group.png"),
             dpi=300)
         plt.show()
 
@@ -404,12 +413,465 @@ for cluster_id in sorted(plot_df["cluster"].unique()):
         # stars
         plt.text((x1 + x2) / 2, y + h, stars, ha="center", va="bottom", fontsize=12, weight="bold",)
         plt.xlabel("")
-        plt.ylabel(f"Median {cluster_label} ({cluster_id})")
+        plt.ylabel(f"Mean {cluster_label} ({cluster_id})")
         sns.despine()
         plt.tight_layout()
         plt.savefig(os.path.join(
-            plot_dir, f"{file_suffix}_cluster-{cluster_id:02d}_{cluster_label}_boxplot_difference_by_group.png"), dpi=300)
+            plot_dir, f"{file_suffix}_mean_cluster-{cluster_id:02d}_{cluster_label}_boxplot_difference_by_group.png"), dpi=300)
         plt.show()
+
+
+        #---------------------------------------------------------------------------------------------------------------
+        # BARPLOTS WITH STRIPPLOT FOR SUBJECT VALUES
+        fig, ax = plt.subplots(figsize=(4, 4))
+
+        ax.axhline(0, color="grey", linewidth=1.5, alpha=0.5)
+
+        # Reihenfolge definieren
+        group_order = ["control", "patient"]
+        run_order = ["pre", "post"]
+
+        # Farben
+        colors = {
+            ("control", "pre"): "mediumturquoise",
+            ("control", "post"): "teal",
+            ("patient", "pre"): "lightpink",
+            ("patient", "post"): "hotpink"
+        }
+
+        # Barplot
+        sns.barplot(
+            data=this_plot,
+            x="group",
+            y="mean",
+            hue="run",
+            order=group_order,
+            hue_order=run_order,
+            errorbar="ci",
+            err_kws={"color": "black", "linewidth": 2},
+            dodge=True,
+            ax=ax,
+            legend=False,
+            fill=False,
+        )
+
+        # Balken individuell einfärben
+        for container, run in zip(ax.containers, run_order):
+            for bar, group in zip(container.patches, group_order):
+                bar.set_facecolor("none")
+                bar.set_edgecolor(colors[(group, run)])
+                bar.set_linewidth(1.5)
+
+        # Stripplot
+        sns.stripplot(
+            data=this_plot,
+            x="group",
+            y="mean",
+            hue="run",
+            order=group_order,
+            hue_order=run_order,
+            dodge=True,
+            jitter=0.15,
+            alpha=0.6,
+            size=6,
+            ax=ax,
+            legend=False
+        )
+
+        # Punkte individuell einfärben
+        for collection, (group, run) in zip(
+                ax.collections,
+                [(g, r) for g in group_order for r in run_order]
+        ):
+            collection.set_facecolor(colors[(group, run)])
+
+        ax.set_xlabel("")
+        ax.set_ylabel(f"Mean {cluster_label} ({cluster_id})")
+
+        sns.despine()
+        plt.tight_layout()
+        plt.show()
+        #---------------------------------------------------------------------------------------------------------------
+
+
+        #---------------------------------------------------------------------------------------------------------------
+        # PAIRED STRIPPLOT WITH POINTPLOT FOR GROUP MEANS
+        fig, ax = plt.subplots(figsize=(4, 4))
+
+        # Reihenfolge
+        group_order = ["control", "patient"]
+        run_order = ["pre", "post"]
+
+        # Farben
+        colors = {
+            ("control", "pre"): "mediumturquoise",
+            ("control", "post"): "teal",
+            ("patient", "pre"): "lightpink",
+            ("patient", "post"): "hotpink"
+        }
+
+        # X-Positionen
+        positions = {
+            ("control", "pre"): -0.2,
+            ("control", "post"): 0.2,
+            ("patient", "pre"): 0.8,
+            ("patient", "post"): 1.2
+        }
+
+        ax.axhline(0, color="grey", linewidth=1.5, alpha=0.5)
+        # 1. Individuelle Verbindungslinien
+        for group in group_order:
+
+            group_data = this_plot[this_plot["group"] == group]
+
+            for subject, subject_data in group_data.groupby("subject_id"):
+
+                pre = subject_data[subject_data["run"] == "pre"]["mean"]
+                post = subject_data[subject_data["run"] == "post"]["mean"]
+
+                if len(pre) == 1 and len(post) == 1:
+                    ax.plot(
+                        [positions[(group, "pre")],
+                         positions[(group, "post")]],
+                        [pre.iloc[0], post.iloc[0]],
+                        color="grey",
+                        alpha=0.2,
+                        linewidth=0.8,
+                        zorder=1
+                    )
+
+        # 2. Individuelle Datenpunkte
+        rng = np.random.default_rng(42)
+
+        for group in group_order:
+            for run in run_order:
+                subset = this_plot[
+                    (this_plot["group"] == group) &
+                    (this_plot["run"] == run)
+                    ]
+
+                x = positions[(group, run)]
+
+                jitter = rng.uniform(-0.04, 0.04, len(subset))
+
+                ax.scatter(
+                    np.full(len(subset), x) + jitter,
+                    subset["mean"],
+                    color=colors[(group, run)],
+                    alpha=0.6,
+                    s=25,
+                    zorder=2
+                )
+
+        # 3. Mittelwerte + 95%-Konfidenzintervalle
+        for group in group_order:
+            for run in run_order:
+
+                subset = this_plot[
+                    (this_plot["group"] == group) &
+                    (this_plot["run"] == run)
+                    ]
+
+                values = subset["mean"].dropna()
+
+                if len(values) < 2:
+                    continue
+
+                mean = values.mean()
+
+                # 95%-Konfidenzintervall (Bootstrap)
+                from scipy.stats import bootstrap
+
+                ci = bootstrap(
+                    (values.to_numpy(),),
+                    np.mean,
+                    confidence_level=0.95,
+                    random_state=42
+                ).confidence_interval
+
+                x = positions[(group, run)]
+
+                ax.errorbar(
+                    x,
+                    mean,
+                    yerr=[[mean - ci.low], [ci.high - mean]],
+                    fmt="o",
+                    color="black",
+                    markersize=7,
+                    capsize=4,
+                    linewidth=2,
+                    zorder=5
+                )
+
+        # 4. Layout
+        ax.set_xticks([0, 1])
+        ax.set_xticklabels(["control", "patient"])
+
+        ax.set_ylabel(f"Mean {cluster_label} ({cluster_id})")
+        ax.set_xlabel("")
+
+        sns.despine()
+        plt.tight_layout()
+        plt.show()
+        #---------------------------------------------------------------------------------------------------------------
+
+
+        #---------------------------------------------------------------------------------------------------------------
+        fig, ax = plt.subplots(figsize=(4, 4))
+
+        # Reihenfolge
+        group_order = ["control", "patient"]
+        run_order = ["pre", "post"]
+
+        # Farben
+        colors = {
+            ("control", "pre"): "mediumturquoise",
+            ("control", "post"): "teal",
+            ("patient", "pre"): "lightpink",
+            ("patient", "post"): "hotpink"
+        }
+
+        # Horizontale Nulllinie
+        ax.axhline(0, color="grey", linewidth=1.5, alpha=0.5)
+
+        # 1. Stripplot: Individuelle Datenpunkte
+        sns.stripplot(
+            data=this_plot,
+            x="group",
+            y="mean",
+            hue="run",
+            order=group_order,
+            hue_order=run_order,
+            palette=["mediumturquoise", "teal"],
+            dodge=True,
+            jitter=0.15,
+            alpha=0.6,
+            size=6,
+            ax=ax,
+            legend=False
+        )
+
+        # Punkte individuell einfärben
+        for collection, (group, run) in zip(
+                ax.collections,
+                [(g, r) for g in group_order for r in run_order]
+        ):
+            collection.set_facecolor(colors[(group, run)])
+
+        # 2. Pointplot: Gruppenmittelwerte + 95%-CI
+        sns.pointplot(
+            data=this_plot,
+            x="group",
+            y="mean",
+            hue="run",
+            order=group_order,
+            hue_order=run_order,
+            dodge=0.4,
+            errorbar=("ci", 95),
+            n_boot=1000,
+            color="black",
+            markers="o",
+            markersize=7,
+            linestyles="none",
+            capsize=0.03,
+            err_kws={"linewidth": 1.5},
+            ax=ax,
+            legend=False
+        )
+
+        # 3. Verbindungslinien zwischen Gruppenmittelwerten
+        positions = {
+            ("control", "pre"): -0.2,
+            ("control", "post"): 0.2,
+            ("patient", "pre"): 0.8,
+            ("patient", "post"): 1.2
+        }
+
+        for group in group_order:
+            means = [
+                this_plot[
+                    (this_plot["group"] == group) &
+                    (this_plot["run"] == run)
+                    ]["mean"].mean()
+                for run in run_order
+            ]
+
+            x_positions = [
+                positions[(group, run)]
+                for run in run_order
+            ]
+
+            ax.plot(
+                x_positions,
+                means,
+                color="black",
+                linewidth=1.5,
+                zorder=4
+            )
+
+        # 4. Layout
+        ax.set_xlabel("")
+        ax.set_ylabel(f"Mean {cluster_label} ({cluster_id})")
+
+        sns.despine()
+        plt.tight_layout()
+        plt.show()
+        #---------------------------------------------------------------------------------------------------------------
+
+
+        #---------------------------------------------------------------------------------------------------------------
+        fig, ax = plt.subplots(figsize=(3, 4))
+
+        # Reihenfolge
+        group_order = ["control", "patient"]
+        run_order = ["pre", "post"]
+
+        # Farben
+        colors = {
+            ("control", "pre"): "mediumturquoise",
+            ("patient", "pre"): "lightpink",
+            ("control", "post"): "teal",
+            ("patient", "post"): "hotpink"
+        }
+
+        # X-Positionen
+        positions = {
+            ("control", "pre"): -0.08,
+            ("patient", "pre"): 0.08,
+            ("control", "post"): 0.92,
+            ("patient", "post"): 1.08
+        }
+
+        # Horizontale Nulllinie
+        ax.axhline(
+            0,
+            color="grey",
+            linewidth=1.5,
+            alpha=0.5,
+            zorder=0
+        )
+
+        # --------------------------------------------------
+        # 1. Stripplot: Individuelle Datenpunkte
+        # --------------------------------------------------
+
+        rng = np.random.default_rng(42)
+
+        for run in run_order:
+            for group in group_order:
+                subset = this_plot[
+                    (this_plot["group"] == group) &
+                    (this_plot["run"] == run)
+                    ]
+
+                x = positions[(group, run)]
+
+                jitter = rng.uniform(
+                    -0.06, 0.06, len(subset)
+                )
+
+                ax.scatter(
+                    np.full(len(subset), x) + jitter,
+                    subset["mean"],
+                    color=colors[(group, run)],
+                    alpha=0.5,
+                    s=25,
+                    edgecolors="none",
+                    zorder=2
+                )
+
+        # --------------------------------------------------
+        # 2. Mittelwerte + 95%-Konfidenzintervalle
+        # --------------------------------------------------
+
+        for run in run_order:
+            for group in group_order:
+
+                subset = this_plot[
+                    (this_plot["group"] == group) &
+                    (this_plot["run"] == run)
+                    ]
+
+                values = subset["mean"].dropna().to_numpy()
+
+                if len(values) == 0:
+                    continue
+
+                mean = np.mean(values)
+
+                if len(values) >= 2:
+
+                    ci = bootstrap(
+                        (values,),
+                        np.mean,
+                        confidence_level=0.95,
+                        n_resamples=1000,
+                        random_state=42
+                    ).confidence_interval
+
+                    yerr = [
+                        [mean - ci.low],
+                        [ci.high - mean]
+                    ]
+
+                else:
+                    yerr = None
+
+                ax.errorbar(
+                    positions[(group, run)],
+                    mean,
+                    yerr=yerr,
+                    fmt="o",
+                    color="black",
+                    markersize=6,
+                    capsize=4,
+                    linewidth=1.5,
+                    zorder=5
+                )
+
+        # --------------------------------------------------
+        # 3. Verbindungslinien zwischen Gruppenmittelwerten
+        # --------------------------------------------------
+
+        for group in group_order:
+            means = [
+                this_plot[
+                    (this_plot["group"] == group) &
+                    (this_plot["run"] == run)
+                    ]["mean"].mean()
+                for run in run_order
+            ]
+
+            x_positions = [
+                positions[(group, run)]
+                for run in run_order
+            ]
+
+            ax.plot(
+                x_positions,
+                means,
+                color="black",
+                linewidth=1.5,
+                zorder=4
+            )
+
+        # --------------------------------------------------
+        # 4. Layout
+        # --------------------------------------------------
+
+        ax.set_xticks([0, 1])
+        ax.set_xticklabels(["pre", "post"])
+
+        ax.set_xlim(-0.4, 1.4)
+
+        ax.set_xlabel("")
+        ax.set_ylabel(f"Mean {cluster_label} ({cluster_id})")
+
+        sns.despine()
+        plt.tight_layout()
+        plt.show()
+        #---------------------------------------------------------------------------------------------------------------
+
 
 
     # --- Plot part effects (boxplot with difference per part, lineplot pre-post)
@@ -417,16 +879,16 @@ for cluster_id in sorted(plot_df["cluster"].unique()):
         # --- Plot 1: Pre/Post trajectories
         plt.figure(figsize=(2.5, 4))
         plt.axhline(0, color="grey", linewidth=1.5, alpha=0.5)
-        sns.lineplot(data=this_plot, x="run", y="value", hue="part", units="subject_id", estimator=None, alpha=0.3,
+        sns.lineplot(data=this_plot, x="run", y="mean", hue="part", units="subject_id", estimator=None, alpha=0.3,
                      linewidth=1, palette=palette_part, legend=False,)
-        sns.pointplot(data=this_plot, x="run", y="value", hue="part", errorbar="se", markers="o", linestyles="-",
+        sns.pointplot(data=this_plot, x="run", y="mean", hue="part", errorbar="se", markers="o", linestyles="-",
                       linewidth=2, palette=palette_part, legend=False,)
         plt.xlabel("")
-        plt.ylabel(f"Median {cluster_label} ({cluster_id})")
+        plt.ylabel(f"Mean {cluster_label} ({cluster_id})")
         plt.tight_layout()
         sns.despine()
         plt.savefig(os.path.join(
-            plot_dir, f"{file_suffix}_cluster-{cluster_id:02d}_{cluster_label}_lineplot_pre_post_by_part.png"),
+            plot_dir, f"{file_suffix}_mean_cluster-{cluster_id:02d}_{cluster_label}_lineplot_pre_post_by_part.png"),
             dpi=300)
         plt.show()
 
@@ -451,11 +913,11 @@ for cluster_id in sorted(plot_df["cluster"].unique()):
         plt.text((x1 + x2) / 2, y + h, stars, ha="center", va="bottom", fontsize=12, weight="bold",)
         # plt.title(f"{seed}: difference (post - pre)")
         plt.xlabel("")
-        plt.ylabel(f"Median {cluster_label} ({cluster_id})")
+        plt.ylabel(f"Mean {cluster_label} ({cluster_id})")
         sns.despine()
         plt.tight_layout()
         plt.savefig(os.path.join(
-            plot_dir, f"{file_suffix}_cluster-{cluster_id:02d}_{cluster_label}_boxplot_difference_by_part.png"), dpi=300)
+            plot_dir, f"{file_suffix}_mean_cluster-{cluster_id:02d}_{cluster_label}_boxplot_difference_by_part.png"), dpi=300)
         plt.show()
 
 
@@ -482,12 +944,12 @@ for cluster_id in sorted(plot_df["cluster"].unique()):
         plt.text((x1 + x2) / 2, y + h, stars, ha="center", va="bottom", fontsize=12, weight="bold",)
         # plt.title(f"{seed}: difference (post - pre)")
         plt.xlabel("")
-        plt.ylabel(f"Median {cluster_label} ({cluster_id})")
+        plt.ylabel(f"Mean {cluster_label} ({cluster_id})")
         sns.despine()
         plt.tight_layout()
         plt.savefig(os.path.join(
             plot_dir,
-            f"{file_suffix}_cluster-{cluster_id:02d}_{cluster_label}_boxplot_difference_by_group_x_part.png"),
+            f"{file_suffix}_mean_cluster-{cluster_id:02d}_{cluster_label}_boxplot_difference_by_group_x_part.png"),
             dpi=300
         )
         plt.show()
@@ -498,18 +960,18 @@ for cluster_id in sorted(plot_df["cluster"].unique()):
             # --- Plot 1: Pre/Post trajectories
             plt.figure(figsize=(2.5, 4))
             plt.axhline(0, color="grey", linewidth=1.5, alpha=0.5)
-            sns.lineplot(data=part_plot, x="run", y="value", hue="group", units="subject_id", estimator=None, alpha=0.3,
+            sns.lineplot(data=part_plot, x="run", y="mean", hue="group", units="subject_id", estimator=None, alpha=0.3,
                          linewidth=1, palette=palette, legend=False,)
-            sns.pointplot(data=part_plot, x="run", y="value", hue="group", errorbar="se", markers="o", linestyles="-",
+            sns.pointplot(data=part_plot, x="run", y="mean", hue="group", errorbar="se", markers="o", linestyles="-",
                           linewidth=2, palette=palette, legend=False,)
             plt.xlabel("")
-            plt.ylabel(f"Median {cluster_label} ({cluster_id}); Part {part}")
+            plt.ylabel(f"Mean {cluster_label} ({cluster_id}); Part {part}")
             plt.ylim(-0.2, 0.3)
             plt.tight_layout()
             sns.despine()
             plt.savefig(os.path.join(
                 plot_dir,
-                f"{file_suffix}_cluster-{cluster_id:02d}_{cluster_label}_lineplot_pre_post_by_group_part_{part}.png"),
+                f"{file_suffix}_mean_cluster-{cluster_id:02d}_{cluster_label}_lineplot_pre_post_by_group_part_{part}.png"),
                 dpi=300)
             plt.show()
 

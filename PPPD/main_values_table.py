@@ -13,6 +13,7 @@ main_values_tables_path = get_main_values_tables_path()
 table_path_1 = os.path.join(main_values_tables_path, "PPPD_Part1_main_values_Questionnaires.xlsx")
 table_path_2 = os.path.join(main_values_tables_path, "PPPD_Part2_main_values_Questionnaires.xlsx")
 neo_path_1 = os.path.join(main_values_tables_path, "NEO-FFI-Auswertung.xlsx")
+vest_path = os.path.join(main_values_tables_path, "PPPD_vestibular_tests_both_parts.xlsx")
 
 df1 = pd.read_excel(table_path_1, sheet_name="PPPD_values")
 df2 = pd.read_excel(table_path_2, sheet_name="main_values")
@@ -28,6 +29,10 @@ niigata2_df = pd.read_excel(table_path_2, sheet_name="Niigata")
 
 neo1_df = pd.read_excel(neo_path_1, sheet_name="Tabelle1")
 neo2_df = pd.read_excel(table_path_2, sheet_name="NEO_Auswertung")
+
+vhit_df = pd.read_excel(vest_path, sheet_name="vKIT")
+svv_df = pd.read_excel(vest_path, sheet_name="main_values")
+ovemp_df = pd.read_excel(vest_path, sheet_name="oVEMP")
 
 
 # --- Choose subjects depending on experimental part and exclude subjects who participated in both parts:
@@ -56,6 +61,9 @@ niigata1_df = niigata1_df[niigata1_df["SubjID"].isin(selected_subs)]
 niigata2_df = niigata2_df[niigata2_df["SubjID"].isin(selected_subs)]
 neo1_df = neo1_df[neo1_df["SubjID"].isin(selected_subs)]
 neo2_df = neo2_df[neo2_df["SubjID"].isin(selected_subs)]
+vhit_df = vhit_df[vhit_df["SubjID"].isin(selected_subs)]
+svv_df = svv_df[svv_df["SubjID"].isin(selected_subs)]
+ovemp_df = ovemp_df[ovemp_df["SubjID"].isin(selected_subs)]
 
 
 # --- Select columns to keep
@@ -241,6 +249,54 @@ postu_df = pd.concat([postu1_df, postu2_df], ignore_index=True)
 
 # --- Merge main values and posturography df
 df = df.merge(postu_df, on="subject_num", how="left")
+
+
+# --- Select columns to keep for vHIT data
+columns_to_keep_vhit = ["SubjID", "right median Gain", "right SD", "left median Gain", "left SD", "total average"]
+
+vhit_df = vhit_df[columns_to_keep_vhit]
+
+vhit_df = vhit_df.rename(columns={
+    "SubjID": "subject_num",
+    "right median Gain": "vhit_right_median_gain",
+    "right SD": "vhit_right_sd",
+    "left median Gain": "vhit_left_median_gain",
+    "left SD": "vhit_left_sd",
+    "total average": "vhit_total_average",
+})
+
+
+# --- Select columns to keep for SVV data
+columns_to_keep_svv = ["SubjID", "average_s (°)", "SD_s (°)", "average_d (°)", "SD_d (°)"]
+
+svv_df = svv_df[columns_to_keep_svv]
+
+svv_df = svv_df.rename(columns={
+    "SubjID": "subject_num",
+    "average_s (°)": "svv_average_s",
+    "SD_s (°)": "svv_sd_s",
+    "average_d (°)": "svv_average_d",
+    "SD_d (°)": "svv_sd_d",
+})
+
+
+# --- Select columns to keep for oVEMP data
+columns_to_keep_ovemp = ["SubjID", "linker_Amplitudenunterschiede", "rechter_Amplitudenunterschied", "average"]
+
+ovemp_df = ovemp_df[columns_to_keep_ovemp]
+
+ovemp_df = ovemp_df.rename(columns={
+    "SubjID": "subject_num",
+    "linker_Amplitudenunterschiede": "ovemp_left_amp_diff",
+    "rechter_Amplitudenunterschied": "ovemp_right_amp_diff",
+    "average": "ovemp_average_amp_diff",
+})
+
+
+# --- Merge main values and posturography df
+df = df.merge(vhit_df, on="subject_num", how="left")
+df = df.merge(svv_df, on="subject_num", how="left")
+df = df.merge(ovemp_df, on="subject_num", how="left")
 
 
 # --- Save Dataframe as csv

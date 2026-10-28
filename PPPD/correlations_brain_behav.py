@@ -18,8 +18,8 @@ MIN_N = 3
 GROUPS = ("control", "patient")
 
 PALETTE = {
-    "control": "teal",
-    "patient": "hotpink",
+    "control": "black",
+    "patient": "teal",
 }
 
 BRAIN_VARS = [
@@ -104,7 +104,7 @@ def save_and_show_figure(output_path):
     plt.tight_layout()
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.show()
-    plt.close()
+    # plt.close()
 
 
 def format_p_value(p_value):
@@ -1275,8 +1275,8 @@ for _, pair in significant_brain_behavior_pairs.iterrows():
     )
 
 plot_brain_behavior_scatter(
-    brain_var="IPLPFcmL__Vermis_8_median",
-    behavior_var="EOfirm_speed",
+    brain_var="InsulaIg2L__Lingual_L_median",
+    behavior_var="ALQ_vis",
     results_df=brain_behavior_results,
     group_data=group_data,
     output_dir=brain_behavior_output_dir,
@@ -1332,3 +1332,26 @@ for group in GROUPS:
         f"{n_significant} of {n_tests} valid tests "
         f"significant after FDR-BH correction."
     )
+
+
+temp_df = df_full[df_full["group"]=="patient"].copy()
+sns.set_theme(style="ticks")
+sns.set_context()
+
+
+fig, ax = plt.subplots(figsize=(4, 4))
+sns.regplot(
+    data=temp_df,
+    x="ALQ_vis",
+    y="InsulaIg2L__Lingual_L_median",
+    color="teal",
+    ax=ax
+)
+sns.despine()
+fig.tight_layout()
+output_path = os.path.join(
+    brain_behavior_output_dir,
+    "brain_behavior_InsulaIg2L__Lingual_L_median_ALQ_vis.svg"
+)
+fig.savefig(output_path, transparent=True, bbox_inches="tight")
+plt.show()
