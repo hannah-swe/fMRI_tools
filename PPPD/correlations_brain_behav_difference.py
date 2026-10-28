@@ -1,0 +1,853 @@
+import os
+from itertools import combinations
+import matplotlib
+matplotlib.use("TkAgg")
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import seaborn as sns
+import statsmodels.api as sm
+from scipy.stats import spearmanr
+from statsmodels.stats.multitest import multipletests
+from PPPD import (get_connectivity_path, get_main_values_tables_path)
+
+
+# --- Script Configuration:
+ALPHA = 0.05
+MIN_N = 3
+GROUPS = ("control", "patient")
+
+PALETTE = {
+    "control": "teal",
+    "patient": "hotpink",
+}
+
+BRAIN_VARS = [
+    "CSvR__Cerebellum_Crus2_L_median",
+    "CSvR__Frontal_Sup_Medial_R_median",
+    "CSvR__Parietal_Inf_R_median",
+    "IPLPFL__Cerebellum_Crus2_L_median",
+    "IPLPFL__Frontal_Sup_Medial_R_median",
+    "IPLPFR__Frontal_Sup_Medial_R_median",
+    "InsulaId1L__Frontal_Sup_Medial_L_median",
+    "OperculumOP1L__Frontal_Sup_Medial_R_median",
+    "OperculumOP4L__Frontal_Sup_Medial_R_median",
+    "OperculumOP4R__Frontal_Sup_Medial_L_median",
+    "OperculumOP4R__Frontal_Sup_Medial_R_median",
+]
+
+BEHAVIOR_VARS = [
+    "age",
+    "disease_duration",
+    "GVS_threshold_mri",
+    "ALQ_total",
+    "Niigata_total",
+    "MSSQ_raw",
+    "HADS_A_total",
+    "HADS_D_total",
+    "Neo.Skala_n",
+    "EOfirm_speed",
+    "ECfirm_speed",
+    "EOfirm_rating",
+    "ECfirm_rating",
+]
+
+BRAIN_LABELS = {
+    "CSvR__Cerebellum_Crus2_L_median": "r CSv-l Crus2",
+    "CSvR__Frontal_Sup_Medial_R_median": "r CSv-r mSFG",
+    "CSvR__Parietal_Inf_R_median": "r CSv-r IPL",
+    "IPLPFL__Cerebellum_Crus2_L_median": "l IPL-l Crus2",
+    "IPLPFL__Frontal_Sup_Medial_R_median": "l IPL-r mSFG",
+    "IPLPFR__Frontal_Sup_Medial_R_median": "r IPL-r mSFG",
+    "InsulaId1L__Frontal_Sup_Medial_L_median": "l Id1 -l mSFG",
+    "OperculumOP1L__Frontal_Sup_Medial_R_median": "l OP1-r mSFG",
+    "OperculumOP4L__Frontal_Sup_Medial_R_median": "l OP4-r mSFG",
+    "OperculumOP4R__Frontal_Sup_Medial_L_median": "r OP4-l mSFG",
+    "OperculumOP4R__Frontal_Sup_Medial_R_median": "r OP4-r mSFG",
+}
+
+BEHAVIOR_LABELS = {
+    "age": "Age",
+    "disease_duration": "DoD",
+    "GVS_threshold_mri": "GVS threshold",
+    "ALQ_total": "ALQ",
+    "Niigata_total": "Niigata",
+    "MSSQ_raw": "MSSQ",
+    "HADS_A_total": "HADS-A",
+    "HADS_D_total": "HADS-D",
+    "Neo.Skala_n": "NEO-N",
+    "EOfirm_speed": "Sway speed EO",
+    "ECfirm_speed": "Sway speed EC",
+    "EOfirm_rating": "Sway rating EO",
+    "ECfirm_rating": "Sway rating EC",
+}
+
+
+
+# --- General helper functions
+def ensure_columns_exist(df, columns, dataframe_name):
+    """
+    Checks whether all required columns are available.
+    """
+    missing_columns = [
+        column for column in columns
+        if column not in df.columns
+    ]
+
+    if missing_columns:
+        raise KeyError(
+            f"Missing columns in {dataframe_name}: "
+            f"{missing_columns}"
+        )
+
+
+def save_and_show_figure(output_path):
+    """
+    Saves the current Matplotlib figure and closes it afterwards.
+    """
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.show()
+    plt.close()
+
+
+def format_p_value(p_value):
+    """
+    Formats p-values for plot annotations.
+    """
+    if pd.isna(p_value):
+        return "NA"
+
+    if p_value < 0.001:
+        return "<0.001"
+
+    return f"{p_value:.3f}"
+
+def get_significance_stars(p_value):
+    """
+    Returns significance stars based on the supplied p-value.
+    """
+    if pd.isna(p_value):
+        return ""
+
+    if p_value < 0.001:
+        return "***"
+
+    if p_value < 0.01:
+        return "**"
+
+    if p_value < 0.05:
+        return "*"
+
+    return ""
+
+
+# --- Data loading and merging
+def merge_feature_table(
+    base_df,
+    feature_df,
+    feature_name,
+):
+    """
+    Merges a feature table into the main dataframe and verifies that group
+    labels agree.
+    The feature dataframe must contain:
+        - subject_num
+        - group
+    """
+    required_columns = ["subject_num", "group"]
+
+    ensure_columns_exist(
+        base_df,
+        required_columns,
+        "base dataframe",
+    )
+    ensure_columns_exist(
+        feature_df,
+        required_columns,
+        feature_name,
+    )
+
+    if not base_df["subject_num"].is_unique:
+        raise ValueError(
+            "subject_num is not unique in the base dataframe."
+        )
+
+    if not feature_df["subject_num"].is_unique:
+        raise ValueError(
+            f"subject_num is not unique in {feature_name}."
+        )
+
+    feature_data = feature_df.rename(columns={"group": f"group_{feature_name}"})
+
+    merged_df = base_df.merge(
+        feature_data,
+        on="subject_num",
+        how="left",
+        validate="one_to_one",
+    )
+
+    feature_group_column = f"group_{feature_name}"
+
+    comparable_rows = merged_df[feature_group_column].notna()
+
+    mismatches = merged_df.loc[
+        comparable_rows
+        & (
+            merged_df["group"]
+            != merged_df[feature_group_column]
+        ),
+        [
+            "subject_num",
+            "group",
+            feature_group_column,
+        ],
+    ]
+
+    if not mismatches.empty:
+        raise ValueError(
+            f"Group-label mismatch after merging {feature_name}:\n"
+            f"{mismatches}"
+        )
+
+    return merged_df.drop(columns=[feature_group_column])
+
+
+def load_analysis_data():
+    """
+    Loads and combines the behavioral, connectivity and fALFF data.
+    """
+    connectivity_path = os.path.join(get_connectivity_path(), "pre_post_analysis", "connectivity_pre-post-diff_dataframe_wide_format.csv")
+    # falff_path = os.path.join(get_connectivity_path(), "falff_pre-data_dataframe_wide_format.csv")
+    main_values_path = os.path.join(get_main_values_tables_path(), "full_dataframe.csv")
+
+    main_df = pd.read_csv(main_values_path)
+    connectivity_df = pd.read_csv(connectivity_path)
+    # falff_df = pd.read_csv(falff_path)
+
+    ensure_columns_exist(
+        main_df,
+        ["subject_num", "group"],
+        "main dataframe",
+    )
+
+    df_full = merge_feature_table(base_df=main_df, feature_df=connectivity_df, feature_name="connectivity",)
+
+    # df_full = merge_feature_table(base_df=df_full, feature_df=falff_df, feature_name="falff")
+
+    required_analysis_columns = (
+        ["subject_num", "group"]
+        + BRAIN_VARS
+        + BEHAVIOR_VARS
+    )
+
+    ensure_columns_exist(
+        df_full,
+        required_analysis_columns,
+        "combined analysis dataframe",
+    )
+
+    return df_full
+
+
+# --- Statistical functions:
+def calculate_spearman_rlm(
+    df,
+    x_var,
+    y_var,
+    min_n=MIN_N,
+):
+    """
+    Calculates:
+        1. Spearman correlation between x and y
+        2. Robust linear model y ~ x using Huber's T norm
+    Returns NaN values if there are too few valid observations.
+    """
+    data = df[[x_var, y_var]].dropna().copy()
+
+    result = {
+        "rho": np.nan,
+        "p": np.nan,
+        "beta": np.nan,
+        "intercept": np.nan,
+        "n": len(data),
+        "status": "too_few_valid_cases",
+    }
+
+    if len(data) < min_n:
+        return result
+
+    x = pd.to_numeric(
+        data[x_var],
+        errors="coerce",
+    )
+
+    y = pd.to_numeric(
+        data[y_var],
+        errors="coerce",
+    )
+
+    numeric_data = pd.DataFrame({
+        "x": x,
+        "y": y,
+    }).dropna()
+
+    result["n"] = len(numeric_data)
+
+    if len(numeric_data) < min_n:
+        return result
+
+    x = numeric_data["x"]
+    y = numeric_data["y"]
+
+    if x.nunique() < 2 or y.nunique() < 2:
+        result["status"] = "constant_variable"
+        return result
+
+    rho, p_value = spearmanr(x, y)
+
+    result["rho"] = rho
+    result["p"] = p_value
+    result["status"] = "ok"
+
+    design_matrix = sm.add_constant(
+        x,
+        has_constant="add",
+    )
+
+    try:
+        model = sm.RLM(
+            y,
+            design_matrix,
+            M=sm.robust.norms.HuberT(),
+        )
+
+        fit = model.fit()
+
+        result["intercept"] = fit.params.iloc[0]
+        result["beta"] = fit.params.iloc[1]
+
+    except Exception as error:
+        result["status"] = (
+            f"correlation_ok_rlm_failed: "
+            f"{type(error).__name__}"
+        )
+
+    return result
+
+
+def add_bonferroni_per_behavior(
+    results_df,
+    group_column="group",
+    behavior_column="behavior",
+    p_column="p",
+    alpha=ALPHA,
+):
+    """
+    Bonferroni correction separately
+
+        - for each group
+        - for each behavioral variable
+
+    i.e. one correction over all brain variables belonging to one
+    behavioral variable.
+
+    New columns
+    -----------
+    p_bonf
+    significant_bonf
+    """
+
+    corrected_df = results_df.copy()
+
+    corrected_df["p_bonf"] = np.nan
+    corrected_df["significant_bonf"] = False
+
+    for (group, behavior), subset in corrected_df.groupby(
+        [group_column, behavior_column],
+        sort=False,
+    ):
+
+        valid_idx = subset.index[subset[p_column].notna()]
+
+        if len(valid_idx) == 0:
+            continue
+
+        reject, p_corrected, _, _ = multipletests(
+            corrected_df.loc[valid_idx, p_column],
+            alpha=alpha,
+            method="bonferroni",
+        )
+
+        corrected_df.loc[valid_idx, "p_bonf"] = p_corrected
+        corrected_df.loc[valid_idx, "significant_bonf"] = reject
+
+    return corrected_df
+
+
+def add_fdr_correction(
+    results_df,
+    group_column="group",
+    p_column="p",
+    alpha=ALPHA,
+):
+    """
+    Applies Benjamini-Hochberg FDR correction separately within each group.
+    Added columns:
+        p_fdr
+        significant_uncorrected
+        significant_fdr
+    Only non-missing p-values are included in each correction family.
+    """
+    corrected_df = results_df.copy()
+
+    corrected_df["p_fdr"] = np.nan
+    corrected_df["significant_uncorrected"] = (
+        corrected_df[p_column] < alpha
+    )
+    corrected_df["significant_fdr"] = False
+
+    for _, group_df in corrected_df.groupby(
+        group_column,
+        sort=False,
+    ):
+        valid_indices = group_df.index[
+            group_df[p_column].notna()
+        ]
+
+        if len(valid_indices) == 0:
+            continue
+
+        reject, corrected_p_values, _, _ = multipletests(
+            corrected_df.loc[valid_indices, p_column],
+            alpha=alpha,
+            method="fdr_bh",
+        )
+
+        corrected_df.loc[
+            valid_indices,
+            "p_fdr",
+        ] = corrected_p_values
+
+        corrected_df.loc[
+            valid_indices,
+            "significant_fdr",
+        ] = reject
+
+    return corrected_df
+
+
+# --- Brain–behavior correlations
+def calculate_brain_behavior_correlations(
+    group_data,
+    brain_vars,
+    behavior_vars,
+):
+    """
+    Calculates every brain–behavior correlation separately for each group.
+    FDR-BH correction is subsequently applied separately within each group
+    across all valid brain–behavior tests.
+    """
+    results = []
+
+    for group in GROUPS:
+        df_group = group_data[group]
+
+        for brain_var in brain_vars:
+            for behavior_var in behavior_vars:
+
+                if behavior_var == "EOfirm_speed":
+                    df_group = df_group[df_group["subject_num"] != 37]
+
+                result = calculate_spearman_rlm(
+                    df=df_group,
+                    x_var=behavior_var,
+                    y_var=brain_var,
+                )
+
+                result.update({
+                    "group": group,
+                    "brain": brain_var,
+                    "behavior": behavior_var,
+                })
+
+                results.append(result)
+
+    results_df = pd.DataFrame(results)
+
+    results_df = add_bonferroni_per_behavior(
+        results_df,
+        group_column="group",
+        behavior_column="behavior",
+        p_column="p",
+        alpha=ALPHA,
+    )
+
+    return results_df
+
+
+def create_brain_behavior_matrices(
+    results_df,
+    group,
+):
+    """
+    Creates rho, uncorrected-p and FDR-p matrices for one group.
+    """
+    group_results = results_df.loc[
+        results_df["group"] == group
+    ]
+
+    rho_matrix = group_results.pivot(
+        index="behavior",
+        columns="brain",
+        values="rho",
+    )
+
+    p_matrix = group_results.pivot(
+        index="behavior",
+        columns="brain",
+        values="p",
+    )
+
+    p_bonf_matrix = group_results.pivot(
+        index="behavior",
+        columns="brain",
+        values="p_bonf",
+    )
+
+    rho_matrix = rho_matrix.reindex(
+        index=BEHAVIOR_VARS,
+        columns=BRAIN_VARS,
+    )
+
+    p_matrix = p_matrix.reindex(
+        index=BEHAVIOR_VARS,
+        columns=BRAIN_VARS,
+    )
+
+    p_bonf_matrix = p_bonf_matrix.reindex(
+        index=BEHAVIOR_VARS,
+        columns=BRAIN_VARS,
+    )
+
+    return rho_matrix, p_matrix, p_bonf_matrix
+
+
+def plot_brain_behavior_heatmap(
+    results_df,
+    group,
+    output_dir,
+):
+    """
+    Plots a brain–behavior heatmap.
+    Cell color:
+        Spearman rho
+    Cell annotation:
+        FDR-corrected p-value
+    Fully opaque annotation:
+        p_fdr < ALPHA
+    Faded annotation:
+        p_fdr >= ALPHA
+    """
+    (
+        rho_matrix,
+        p_matrix,
+        p_bonf_matrix,
+    ) = create_brain_behavior_matrices(
+        results_df=results_df,
+        group=group,
+    )
+
+    rho_plot = rho_matrix.rename(
+        index=BEHAVIOR_LABELS,
+        columns=BRAIN_LABELS,
+    )
+
+    p_bonf_plot = p_bonf_matrix.rename(
+        index=BEHAVIOR_LABELS,
+        columns=BRAIN_LABELS,
+    )
+
+    plt.figure(figsize=(11, 9))
+
+    ax = sns.heatmap(
+        rho_plot,
+        cmap="coolwarm",
+        center=0,
+        vmin=-1,
+        vmax=1,
+        annot=False,
+        linewidths=0.5,
+        square=True,
+        cbar_kws={"label": "Spearman ρ"},
+    )
+
+    for row_index in range(p_bonf_plot.shape[0]):
+        for column_index in range(p_bonf_plot.shape[1]):
+            p_bonf = p_bonf_plot.iloc[
+                row_index,
+                column_index,
+            ]
+
+            if pd.isna(p_bonf):
+                continue
+
+            is_significant = p_bonf < ALPHA
+
+            annotation = format_p_value(p_bonf)
+
+            if is_significant:
+                annotation = f"{annotation}*"
+
+            ax.text(
+                column_index + 0.5,
+                row_index + 0.5,
+                annotation,
+                ha="center",
+                va="center",
+                color="black",
+                alpha=1.0 if is_significant else 0.25,
+                fontsize=9,
+            )
+
+    ax.set_title(
+        f"{group}: brain–behavior correlations\n"
+        f"p-values Bonferroni-corrected; "
+        f"* p-Bonf < {ALPHA}"
+    )
+
+    ax.set_xlabel("Brain variable")
+    ax.set_ylabel("Behavior variable")
+
+    plt.xticks(
+        rotation=45,
+        ha="right",
+    )
+    plt.yticks(rotation=0)
+
+    output_path = os.path.join(
+        output_dir,
+        f"brain_behavior_heatmap_{group}_bonf.png",
+    )
+
+    save_and_show_figure(output_path)
+
+    return rho_matrix, p_matrix, p_bonf_matrix
+
+
+def plot_brain_behavior_scatter(
+    brain_var,
+    behavior_var,
+    results_df,
+    group_data,
+    output_dir,
+):
+    """
+    Plots both groups together and adds one robust regression line per group.
+    """
+    plot_data = []
+
+    for group in GROUPS:
+        data = group_data[group][
+            [brain_var, behavior_var]
+        ].copy()
+
+        data["group"] = group
+        plot_data.append(data)
+
+    plot_df = pd.concat(
+        plot_data,
+        ignore_index=True,
+    ).dropna(
+        subset=[brain_var, behavior_var]
+    )
+
+    if behavior_var == "EOfirm_speed":
+        plot_df = plot_df[plot_df["EOfirm_speed"] < 60]
+
+    if plot_df.empty:
+        return
+
+    plt.figure(figsize=(9, 7))
+
+    ax = sns.scatterplot(
+        data=plot_df,
+        x=behavior_var,
+        y=brain_var,
+        hue="group",
+        hue_order=GROUPS,
+        palette=PALETTE,
+        s=90,
+        alpha=0.7,
+    )
+
+    statistics_text = []
+
+    for group in GROUPS:
+        group_plot_data = plot_df.loc[
+            plot_df["group"] == group
+        ]
+
+        result_rows = results_df.loc[
+            (results_df["group"] == group)
+            & (results_df["brain"] == brain_var)
+            & (results_df["behavior"] == behavior_var)
+        ]
+
+        if result_rows.empty:
+            continue
+
+        result = result_rows.iloc[0]
+
+        rho = result["rho"]
+        p_value = result["p"]
+        p_bonf = result["p_bonf"]
+        beta = result["beta"]
+        intercept = result["intercept"]
+        n = int(result["n"])
+
+        if (
+            pd.notna(beta)
+            and pd.notna(intercept)
+            and len(group_plot_data) > 1
+            and group_plot_data[behavior_var].nunique() > 1
+        ):
+            x_line = np.linspace(
+                group_plot_data[behavior_var].min(),
+                group_plot_data[behavior_var].max(),
+                100,
+            )
+
+            y_line = intercept + beta * x_line
+
+            ax.plot(
+                x_line,
+                y_line,
+                color=PALETTE[group],
+                linewidth=3,
+            )
+
+        statistics_text.append(
+            f"{group}: "
+            f"ρ = {rho:.2f}, "
+            f"p = {format_p_value(p_value)}, "
+            f"p-Bonf = {format_p_value(p_bonf)}"
+        )
+
+    ax.set_xlabel(
+        BEHAVIOR_LABELS.get(
+            behavior_var,
+            behavior_var,
+        )
+    )
+
+    ax.set_ylabel(
+        BRAIN_LABELS.get(
+            brain_var,
+            brain_var,
+        )
+    )
+
+    ax.set_title("\n".join(statistics_text))
+
+    ax.legend(
+        title="Group",
+        frameon=False,
+    )
+
+    sns.despine()
+
+    output_path = os.path.join(
+        output_dir,
+        f"brain_behavior_{brain_var}_{behavior_var}.png",
+    )
+
+    save_and_show_figure(output_path)
+
+
+
+# --- Main analysis
+# Load and prepare data
+df_full = load_analysis_data()
+
+group_data = {
+    group: df_full.loc[
+        df_full["group"] == group
+    ].copy()
+    for group in GROUPS
+}
+
+output_root = os.path.join(get_connectivity_path(), "pre_post_analysis", "brain_correlations",)
+brain_behavior_output_dir = os.path.join(output_root, "brain_behavior",)
+os.makedirs(brain_behavior_output_dir, exist_ok=True,)
+
+
+# Calculate all correlations
+brain_behavior_results = (
+    calculate_brain_behavior_correlations(
+        group_data=group_data,
+        brain_vars=BRAIN_VARS,
+        behavior_vars=BEHAVIOR_VARS,
+    )
+)
+
+brain_behavior_results.to_csv(
+    os.path.join(
+        brain_behavior_output_dir,
+        "brain_behavior_correlation_results.csv",
+    ),
+    index=False,
+)
+
+
+# Plot heatmaps per group
+sns.set_style()
+sns.set_context()
+for group in GROUPS:
+    plot_brain_behavior_heatmap(
+        results_df=brain_behavior_results,
+        group=group,
+        output_dir=brain_behavior_output_dir,
+    )
+
+
+# Plot scatterplots
+significant_brain_behavior_pairs = (
+    brain_behavior_results.loc[
+        brain_behavior_results["significant_bonf"],
+        ["brain", "behavior"],
+    ]
+    .drop_duplicates()
+)
+
+sns.set_theme(
+    style="ticks",
+    context="talk",
+)
+for _, pair in significant_brain_behavior_pairs.iterrows():
+    plot_brain_behavior_scatter(
+        brain_var=pair["brain"],
+        behavior_var=pair["behavior"],
+        results_df=brain_behavior_results,
+        group_data=group_data,
+        output_dir=brain_behavior_output_dir,
+    )
+
+
+# Console summary
+print("\nBrain–behavior correlations")
+print("---------------------------")
+
+for group in GROUPS:
+    group_results = brain_behavior_results.loc[
+        brain_behavior_results["group"] == group
+    ]
+
+    n_tests = group_results["p"].notna().sum()
+    n_significant = group_results["significant_bonf"].sum()
+
+    print(
+        f"{group.capitalize()}: "
+        f"{n_significant} of {n_tests} valid tests "
+        f"significant after FDR-BH correction."
+    )
