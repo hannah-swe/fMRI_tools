@@ -40,9 +40,9 @@ def seedfc_statmap_path(sub_dir: Path, sub: str, variant: str, run: str = "run-0
     """Paths to seed-based outputs (your current naming)."""
     func_task = sub_dir / "func" / "task-rest"
     if variant == "no_scrub":
-        return func_task / f"{sub}_task-rest_{run}_feature-seedPrecNoscrub_seed-Precuneus_stat-effect_statmap.nii.gz"
+        return func_task / f"{sub}_task-rest_{run}_feature-seedbasedNoscrub_seed-Precuneus_stat-effect_statmap.nii.gz"
     else:
-        return func_task / f"{sub}_task-rest_{run}_feature-seedPrecScrub_seed-Precuneus_stat-effect_statmap.nii.gz"
+        return func_task / f"{sub}_task-rest_{run}_feature-seedbasedScrub_seed-Precuneus_stat-effect_statmap.nii.gz"
 
 
 def find_confounds_timeseries(sub_dir: Path, sub: str, run: str = "run-01") -> Path | None:

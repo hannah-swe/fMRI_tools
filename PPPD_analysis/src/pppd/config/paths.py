@@ -1,23 +1,131 @@
 from pathlib import Path
 
-# QC reference run (pick one; could be seedfc run)
-base_dir_halfpipe_qc = Path("/data_wgs04/ag-sensomotorik/PPPD/analysis/part2_pre_old/derivatives/halfpipe")
 
-# Path to HALFpipe derivatives (contains feature-specific outputs)
-base_dir_halfpipe_seedfc = Path("/data_wgs04/ag-sensomotorik/PPPD/analysis/part2_pre_old/derivatives/halfpipe")
-base_dir_halfpipe_falff  = Path("/data_wgs04/ag-sensomotorik/PPPD/analysis/part2_pre/derivatives/halfpipe")
+# ---------------------------------------------------------------------
+# HALFpipe derivatives
+# ---------------------------------------------------------------------
 
-# Path to fMRIPrep derivatives
-fmriprep_dir = Path("/data_wgs04/ag-sensomotorik/PPPD/analysis/part2_pre_old/derivatives/fmriprep")
+HALFPIPE_DIR_ALL = Path(
+    "/data_wgs04/ag-sensomotorik/PPPD/"
+    "motion_scrubbing_check/all_subjects/derivatives/halfpipe"
+)
 
-# Path to participants.tsv in BIDS data folder
-participants_path = Path("/data_wgs04/ag-sensomotorik/PPPD/data/part2_pre/participants.tsv")
+HALFPIPE_DIR_MISSING8 = Path(
+    "/data_wgs04/ag-sensomotorik/PPPD/"
+    "motion_scrubbing_check/missing_8/derivatives/halfpipe"
+)
 
-# Path to reportvals textfile
-reportvals_path = Path("/data_wgs04/ag-sensomotorik/PPPD/analysis/part2_pre_old/reports/reportvals.txt")
+# SeedFC and fALFF are now both stored in the same HALFpipe derivatives
+HALFPIPE_DIRS = (
+    HALFPIPE_DIR_ALL,
+    HALFPIPE_DIR_MISSING8,
+)
 
-# CONFIG: which subjects to drop?
-subs_to_drop = ["sub-134", "sub-140"]
 
-# Path to save plots
-out_dir = Path("/home/hannahschewe/Documents/PPPD_analysis/quality_check_plots")
+# ---------------------------------------------------------------------
+# fMRIPrep derivatives
+# ---------------------------------------------------------------------
+
+FMRIPREP_DIR_ALL = Path(
+    "/data_wgs04/ag-sensomotorik/PPPD/"
+    "motion_scrubbing_check/all_subjects/derivatives/fmriprep"
+)
+
+FMRIPREP_DIR_MISSING8 = Path(
+    "/data_wgs04/ag-sensomotorik/PPPD/"
+    "motion_scrubbing_check/missing_8/derivatives/fmriprep"
+)
+
+
+# ---------------------------------------------------------------------
+# participants.tsv
+# ---------------------------------------------------------------------
+
+PARTICIPANTS_PATH_ALL = Path(
+    "/data_wgs04/ag-sensomotorik/PPPD/data/all_subjects1/participants.tsv"
+)
+
+PARTICIPANTS_PATH_MISSING8 = Path(
+    "/data_wgs04/ag-sensomotorik/PPPD/data/missing8/participants.tsv"
+)
+
+PARTICIPANTS_PATHS = (
+    PARTICIPANTS_PATH_ALL,
+    PARTICIPANTS_PATH_MISSING8,
+)
+
+
+# ---------------------------------------------------------------------
+# HALFpipe reportvals
+# ---------------------------------------------------------------------
+
+REPORTVALS_PATH_ALL = Path(
+    "/data_wgs04/ag-sensomotorik/PPPD/"
+    "motion_scrubbing_check/all_subjects/reports/reportvals.txt"
+)
+
+REPORTVALS_PATH_MISSING8 = Path(
+    "/data_wgs04/ag-sensomotorik/PPPD/"
+    "motion_scrubbing_check/missing_8/reports/reportvals.txt"
+)
+
+REPORTVALS_PATHS = (
+    REPORTVALS_PATH_ALL,
+    REPORTVALS_PATH_MISSING8,
+)
+
+
+# ---------------------------------------------------------------------
+# Subject-dependent directories
+# ---------------------------------------------------------------------
+
+def subject_number(subject: str) -> int:
+    return int(subject.removeprefix("sub-"))
+
+
+def uses_missing8_dataset(subject: str) -> bool:
+    return subject_number(subject) >= 173
+
+
+def get_halfpipe_dir(subject: str) -> Path:
+    return (
+        HALFPIPE_DIR_MISSING8
+        if uses_missing8_dataset(subject)
+        else HALFPIPE_DIR_ALL
+    )
+
+
+def get_fmriprep_dir(subject: str) -> Path:
+    return (
+        FMRIPREP_DIR_MISSING8
+        if uses_missing8_dataset(subject)
+        else FMRIPREP_DIR_ALL
+    )
+
+
+# ---------------------------------------------------------------------
+# Subjects to exclude
+# ---------------------------------------------------------------------
+
+subs_to_drop = [
+    "sub-103",
+    "sub-104",
+    "sub-105",
+    "sub-006",
+    "sub-017",
+    "sub-113",
+    "sub-051",
+    "sub-124",
+    "sub-125",
+    "sub-009",
+    "sub-065",
+    "sub-180",
+]
+
+
+# ---------------------------------------------------------------------
+# Plots
+# ---------------------------------------------------------------------
+
+out_dir = Path(
+    "/data_wgs04/ag-sensomotorik/PPPD/motion_scrubbing_check/quality_check_plots")

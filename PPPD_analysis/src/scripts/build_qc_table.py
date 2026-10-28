@@ -1,138 +1,837 @@
 from __future__ import annotations
+
 from pathlib import Path
+
 import pandas as pd
-from pppd.config.paths import ( base_dir_halfpipe_qc, participants_path, reportvals_path, subs_to_drop)
+
+from pppd.config.paths import (
+    HALFPIPE_DIRS,
+    PARTICIPANTS_PATHS,
+    REPORTVALS_PATHS,
+    subs_to_drop,
+    get_fmriprep_dir,
+)
 from pppd.config.pipelines import pipeline_patterns
-from pppd.io.halfpipe import ( get_tsnr_map, get_confounds_tsv, get_brain_mask)
-from pppd.metrics.qc import extract_qc_metrics
 
 
-def load_participants(participants_tsv: Path) -> pd.DataFrame:
-    """Load participants.tsv and normalize participant_id to 'sub-XXX'."""
-    df = pd.read_csv(participants_tsv, sep="\t")
-    df["participant_id"] = "sub-" + df["participant_id"].astype(str)
-    return df
+# =========================================================
+# CONFIG
+# =========================================================
+
+FD_THRESHOLD = 0.5
+DVARS_THRESHOLD = 1.5
+
+RUN = "run-01"
 
 
-def load_reportvals_qc(reportvals_txt: Path) -> pd.DataFrame:
-    """Load HALFpipe reportvals.txt and return FD-related columns with 'sub-XX' style IDs."""
-    reportvals_df = pd.read_fwf(reportvals_txt)
-    reportvals_df.columns = [c.strip() for c in reportvals_df.columns]
+# =========================================================
+# HELPERS
+# =========================================================
 
-    qc = reportvals_df[["sub", "fd_mean", "fd_max", "fd_perc"]].copy()
-    qc["sub"] = "sub-" + qc["sub"].astype(str).str.zfill(2)
+def normalize_subject_id(value) -> str:
+    """
+    Normalize subject IDs to the format used by HALFpipe:
 
-    qc = qc.rename(
-        columns={
-            "fd_mean": "fd_mean_halfpipe",
-            "fd_max": "fd_max_halfpipe",
-            "fd_perc": "fd_perc_halfpipe",
-        }
+    004 -> sub-004
+    17 -> sub-017
+    sub-101 -> sub-101
+    """
+    value = str(value).strip()
+
+    if value.startswith("sub-"):
+        value = value[4:]
+
+    # pandas may occasionally read IDs as floats, e.g. "4.0"
+    if value.endswith(".0"):
+        value = value[:-2]
+
+    return f"sub-{int(value):03d}"
+
+
+def find_confounds_timeseries(
+    sub_dir: Path,
+    sub: str,
+    run: str = RUN,
+) -> Path | None:
+    """
+    Find the fMRIPrep confounds timeseries for one resting-state run.
+    """
+    func_dir = sub_dir / "func"
+
+    hits = sorted(
+        func_dir.glob(
+            f"{sub}_task-rest_{run}_desc-confounds_timeseries.tsv"
+        )
     )
 
-    num_cols = ["fd_mean_halfpipe", "fd_max_halfpipe", "fd_perc_halfpipe"]
-    qc[num_cols] = qc[num_cols].apply(pd.to_numeric, errors="coerce")
-    return qc
+    return hits[0] if hits else None
 
 
-def build_qc_table(
-    base_dir: Path,
-    pipeline_patterns: dict[str, str],
+def compute_motion_outlier_metrics(
+    confounds_path: Path,
+    fd_threshold: float = FD_THRESHOLD,
+    dvars_threshold: float = DVARS_THRESHOLD,
+) -> dict[str, float | int]:
+    """
+    Compute motion-outlier metrics from a fMRIPrep confounds TSV.
+
+    HALFpipe motion scrubbing uses motion_outlierXX spike regressors.
+    These regressors correspond to volumes flagged by FD and/or
+    standardized DVARS.
+
+    Returns subject/run-level QC metrics.
+    """
+    confounds = pd.read_csv(
+        confounds_path,
+        sep="\t",
+    )
+
+    # -----------------------------------------------------
+    # Actual motion_outlier spike regressors
+    # -----------------------------------------------------
+    outlier_cols = [
+        col
+        for col in confounds.columns
+        if col.startswith("motion_outlier")
+    ]
+
+    if outlier_cols:
+        outlier_mask = (
+            confounds[outlier_cols]
+            .fillna(0)
+            .astype(bool)
+            .any(axis=1)
+        )
+    else:
+        outlier_mask = pd.Series(
+            False,
+            index=confounds.index,
+        )
+
+    # -----------------------------------------------------
+    # Reconstruct FD / DVARS threshold masks
+    # -----------------------------------------------------
+    if "framewise_displacement" in confounds.columns:
+        fd = pd.to_numeric(
+            confounds["framewise_displacement"],
+            errors="coerce",
+        )
+
+        fd_mask = (
+            fd > fd_threshold
+        ).fillna(False)
+
+    else:
+        fd_mask = pd.Series(
+            False,
+            index=confounds.index,
+        )
+
+    if "std_dvars" in confounds.columns:
+        std_dvars = pd.to_numeric(
+            confounds["std_dvars"],
+            errors="coerce",
+        )
+
+        dvars_mask = (
+            std_dvars > dvars_threshold
+        ).fillna(False)
+
+    else:
+        dvars_mask = pd.Series(
+            False,
+            index=confounds.index,
+        )
+
+    # -----------------------------------------------------
+    # Counts
+    # -----------------------------------------------------
+    n_volumes = len(confounds)
+
+    n_motion_outliers = int(
+        outlier_mask.sum()
+    )
+
+    n_fd_outliers = int(
+        fd_mask.sum()
+    )
+
+    n_dvars_outliers = int(
+        dvars_mask.sum()
+    )
+
+    n_fd_only_outliers = int(
+        (fd_mask & ~dvars_mask).sum()
+    )
+
+    n_dvars_only_outliers = int(
+        (~fd_mask & dvars_mask).sum()
+    )
+
+    n_fd_and_dvars_outliers = int(
+        (fd_mask & dvars_mask).sum()
+    )
+
+    if n_volumes > 0:
+        motion_outlier_perc = (
+            100
+            * n_motion_outliers
+            / n_volumes
+        )
+    else:
+        motion_outlier_perc = float("nan")
+
+    return {
+        "n_volumes": n_volumes,
+        "n_motion_outliers": n_motion_outliers,
+        "motion_outlier_perc": motion_outlier_perc,
+        "n_fd_outliers": n_fd_outliers,
+        "n_dvars_outliers": n_dvars_outliers,
+        "n_fd_only_outliers": n_fd_only_outliers,
+        "n_dvars_only_outliers": n_dvars_only_outliers,
+        "n_fd_and_dvars_outliers": n_fd_and_dvars_outliers,
+    }
+
+
+def build_motion_outlier_table(
+    subjects: list[str],
+    run: str = RUN,
 ) -> pd.DataFrame:
-    """Create subject x pipeline QC table from HALFpipe outputs."""
-    qc_rows: list[dict] = []
+    """
+    Build one row per subject containing motion-outlier metrics
+    from the appropriate fMRIPrep derivatives directory.
+    """
+    rows = []
 
-    sub_dirs = sorted(base_dir.glob("sub-*"))
-    if not sub_dirs:
-        raise FileNotFoundError(f"No sub-* directories found in: {base_dir}")
+    for sub in sorted(subjects):
 
-    for sub_dir in sub_dirs:
-        sub = sub_dir.name
+        fmriprep_root = get_fmriprep_dir(sub)
 
-        # One tSNR map per run (independent of scrubbing)
-        tsnr_map = get_tsnr_map(sub_dir, sub=sub, run="run-01")
-        if not tsnr_map.exists():
-            print(f"[SKIP] No tSNR map for {sub}: {tsnr_map}")
+        if not fmriprep_root.exists():
+            raise FileNotFoundError(
+                f"fMRIPrep directory does not exist: {fmriprep_root}"
+            )
+
+        sub_dir = fmriprep_root / sub
+
+        if not sub_dir.exists():
+            print(
+                f"[WARNING] Subject directory not found for {sub}: "
+                f"{sub_dir}"
+            )
+
+            rows.append(
+                {
+                    "sub": sub,
+                    "n_volumes": pd.NA,
+                    "n_motion_outliers": pd.NA,
+                    "motion_outlier_perc": pd.NA,
+                    "n_fd_outliers": pd.NA,
+                    "n_dvars_outliers": pd.NA,
+                    "n_fd_only_outliers": pd.NA,
+                    "n_dvars_only_outliers": pd.NA,
+                    "n_fd_and_dvars_outliers": pd.NA,
+                }
+            )
+
             continue
 
-        for pipeline in pipeline_patterns.keys():
-            confounds_tsv = get_confounds_tsv(
-                sub_dir=sub_dir,
-                sub=sub,
-                run="run-01",
-                pipeline=pipeline,
-                pipeline_patterns=pipeline_patterns,
-            )
-            if not confounds_tsv.exists():
-                print(f"[SKIP] No confounds for {sub} ({pipeline}): {confounds_tsv}")
-                continue
+        confounds_path = find_confounds_timeseries(
+            sub_dir=sub_dir,
+            sub=sub,
+            run=run,
+        )
 
-            brain_mask = get_brain_mask(
-                sub_dir=sub_dir,
-                sub=sub,
-                run="run-01",
-                pipeline=pipeline,
-                pipeline_patterns=pipeline_patterns,
-            )
-            brain_mask = brain_mask if brain_mask.exists() else None
-
-            qc_rows.append(
-                extract_qc_metrics(
-                    sub=sub,
-                    run="run-01",
-                    pipeline=pipeline,
-                    confounds_tsv=confounds_tsv,
-                    tsnr_map=tsnr_map,
-                    brain_mask=brain_mask,
-                )
+        if confounds_path is None:
+            print(
+                f"[WARNING] No confounds file found for {sub} "
+                f"in {sub_dir / 'func'}"
             )
 
-    qc_df = pd.DataFrame(qc_rows)
-    if qc_df.empty:
-        raise RuntimeError("QC table is empty. Check paths/patterns or missing files.")
+            rows.append(
+                {
+                    "sub": sub,
+                    "n_volumes": pd.NA,
+                    "n_motion_outliers": pd.NA,
+                    "motion_outlier_perc": pd.NA,
+                    "n_fd_outliers": pd.NA,
+                    "n_dvars_outliers": pd.NA,
+                    "n_fd_only_outliers": pd.NA,
+                    "n_dvars_only_outliers": pd.NA,
+                    "n_fd_and_dvars_outliers": pd.NA,
+                }
+            )
 
-    qc_df = qc_df.sort_values(["sub", "pipeline"]).reset_index(drop=True)
-    return qc_df
+            continue
 
+        metrics = compute_motion_outlier_metrics(
+            confounds_path=confounds_path,
+        )
+
+        rows.append(
+            {
+                "sub": sub,
+                **metrics,
+            }
+        )
+
+    return pd.DataFrame(rows)
+
+
+def build_subject_pipeline_table(
+    base_dirs: tuple[Path, ...],
+    pipelines: list[str],
+) -> pd.DataFrame:
+    """
+    Find all HALFpipe subjects and create one row per
+    subject x pipeline.
+
+    No confounds or preprocessed images are required.
+    """
+    subjects: list[str] = []
+
+    for base_dir in base_dirs:
+        print(
+            f"Searching HALFpipe directory: {base_dir}"
+        )
+
+        sub_dirs = sorted(
+            base_dir.glob("sub-*")
+        )
+
+        print(
+            f"Found {len(sub_dirs)} subject directories."
+        )
+
+        subjects.extend(
+            sub_dir.name
+            for sub_dir in sub_dirs
+        )
+
+    # Safety check:
+    # subjects should occur in only one HALFpipe root
+    subjects_series = pd.Series(subjects)
+
+    duplicates = subjects_series[
+        subjects_series.duplicated()
+    ].unique()
+
+    if len(duplicates) > 0:
+        raise RuntimeError(
+            "Subjects found in more than one "
+            "HALFpipe directory: "
+            f"{duplicates.tolist()}"
+        )
+
+    rows = [
+        {
+            "sub": sub,
+            "pipeline": pipeline,
+        }
+        for sub in sorted(subjects)
+        for pipeline in pipelines
+    ]
+
+    return pd.DataFrame(rows)
+
+
+def load_participants(
+    paths: tuple[Path, ...],
+) -> pd.DataFrame:
+    """
+    Combine participants.tsv files and normalize
+    participant IDs.
+    """
+    dfs = []
+
+    for path in paths:
+        print(
+            f"Loading participants: {path}"
+        )
+
+        df = pd.read_csv(
+            path,
+            sep="\t",
+            dtype={
+                "participant_id": str,
+            },
+        )
+
+        if "participant_id" not in df.columns:
+            raise KeyError(
+                f"'participant_id' column missing in {path}"
+            )
+
+        if "group" not in df.columns:
+            raise KeyError(
+                f"'group' column missing in {path}"
+            )
+
+        df["participant_id"] = (
+            df["participant_id"]
+            .apply(normalize_subject_id)
+        )
+
+        dfs.append(
+            df[
+                [
+                    "participant_id",
+                    "group",
+                ]
+            ].copy()
+        )
+
+    participants = pd.concat(
+        dfs,
+        ignore_index=True,
+    )
+
+    # Protect against duplicate entries
+    # across the two TSVs
+    duplicates = participants[
+        participants["participant_id"]
+        .duplicated(keep=False)
+    ]
+
+    if not duplicates.empty:
+        print(
+            "\n[WARNING] Duplicate participants found:"
+        )
+
+        print(
+            duplicates
+            .sort_values("participant_id")
+            .to_string(index=False)
+        )
+
+        participants = (
+            participants
+            .drop_duplicates(
+                subset="participant_id",
+                keep="last",
+            )
+        )
+
+    return participants
+
+
+def load_reportvals(
+    paths: tuple[Path, ...],
+) -> pd.DataFrame:
+    """
+    Combine HALFpipe reportvals.txt files.
+
+    These FD columns are retained for QC analyses.
+    """
+    dfs = []
+
+    for path in paths:
+        print(
+            f"Loading reportvals: {path}"
+        )
+
+        df = pd.read_fwf(path)
+
+        df.columns = [
+            c.strip()
+            for c in df.columns
+        ]
+
+        required = [
+            "sub",
+            "fd_mean",
+            "fd_max",
+            "fd_perc",
+        ]
+
+        missing = [
+            col
+            for col in required
+            if col not in df.columns
+        ]
+
+        if missing:
+            raise KeyError(
+                f"Missing columns in {path}: {missing}"
+            )
+
+        df = df[
+            required
+        ].copy()
+
+        # Remove separator/header rows
+        # from fixed-width report
+        df = df[
+            df["sub"]
+            .astype(str)
+            .str.fullmatch(r"\d+")
+        ].copy()
+
+        df["sub"] = (
+            df["sub"]
+            .apply(normalize_subject_id)
+        )
+
+        df = df.rename(
+            columns={
+                "fd_mean":
+                    "fd_mean_halfpipe",
+
+                "fd_max":
+                    "fd_max_halfpipe",
+
+                "fd_perc":
+                    "fd_perc_halfpipe",
+            }
+        )
+
+        numeric_cols = [
+            "fd_mean_halfpipe",
+            "fd_max_halfpipe",
+            "fd_perc_halfpipe",
+        ]
+
+        df[numeric_cols] = (
+            df[numeric_cols]
+            .apply(
+                pd.to_numeric,
+                errors="coerce",
+            )
+        )
+
+        dfs.append(df)
+
+    reportvals = pd.concat(
+        dfs,
+        ignore_index=True,
+    )
+
+    duplicates = reportvals[
+        reportvals["sub"]
+        .duplicated(keep=False)
+    ]
+
+    if not duplicates.empty:
+        print(
+            "\n[WARNING] Duplicate subjects "
+            "in reportvals:"
+        )
+
+        print(
+            duplicates
+            .sort_values("sub")
+            .to_string(index=False)
+        )
+
+        reportvals = (
+            reportvals
+            .drop_duplicates(
+                subset="sub",
+                keep="last",
+            )
+        )
+
+    return reportvals
+
+
+# =========================================================
+# MAIN
+# =========================================================
 
 def main() -> None:
-    # 1) Build QC from HALFpipe confounds + tSNR
-    qc_df = build_qc_table(base_dir_halfpipe_qc, pipeline_patterns)
 
-    # 2) Merge group labels
-    participants_df = load_participants(participants_path)
-    if "group" not in participants_df.columns:
-        raise KeyError("participants.tsv must contain a 'group' column.")
+    # -----------------------------------------------------
+    # 1. Build subject x pipeline table
+    # -----------------------------------------------------
+    pipelines = list(
+        pipeline_patterns.keys()
+    )
+
+    qc_df = build_subject_pipeline_table(
+        base_dirs=HALFPIPE_DIRS,
+        pipelines=pipelines,
+    )
+
+    print(
+        "\n=== Initial subject table ==="
+    )
+
+    print(
+        "Rows:",
+        len(qc_df),
+    )
+
+    print(
+        "Unique subjects:",
+        qc_df["sub"].nunique(),
+    )
+
+    print(
+        "Pipelines:",
+        qc_df[
+            "pipeline"
+        ].value_counts().to_dict(),
+    )
+
+
+    # -----------------------------------------------------
+    # 2. Add group information
+    # -----------------------------------------------------
+    participants_df = load_participants(
+        PARTICIPANTS_PATHS
+    )
 
     qc_df = qc_df.merge(
-        participants_df[["participant_id", "group"]],
+        participants_df,
         left_on="sub",
         right_on="participant_id",
         how="left",
-    ).drop(columns=["participant_id"])
+        validate="many_to_one",
+    )
 
-    # 3) Merge HALFpipe dashboard QC
-    reportvals_qc = load_reportvals_qc(reportvals_path)
-    qc_df = qc_df.merge(reportvals_qc, on="sub", how="left")
+    qc_df = qc_df.drop(
+        columns=[
+            "participant_id",
+        ]
+    )
 
-    # 4) Drop subjects
-    qc_df = qc_df[~qc_df["sub"].isin(subs_to_drop)].reset_index(drop=True)
 
-    # 5) Sanity checks (prints)
-    print("\n=== Sanity checks ===")
-    print("Rows total:", len(qc_df))
-    print("Unique subjects:", qc_df["sub"].nunique())
-    print("Rows without group label:", int(qc_df["group"].isna().sum()))
-    print("Rows without fd_mean_halfpipe:", int(qc_df["fd_mean_halfpipe"].isna().sum()))
-    print("Pipelines:", qc_df["pipeline"].unique().tolist())
+    # -----------------------------------------------------
+    # 3. Add HALFpipe FD report values
+    # -----------------------------------------------------
+    reportvals_df = load_reportvals(
+        REPORTVALS_PATHS
+    )
 
-    # 6) Save
-    out_dir = Path.cwd() / "outputs"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    csv_path = out_dir / "qc_table.csv"
-    qc_df.to_csv(csv_path, index=False)
-    print("\nSaved:")
-    print(" -", csv_path)
+    qc_df = qc_df.merge(
+        reportvals_df,
+        on="sub",
+        how="left",
+        validate="many_to_one",
+    )
+
+
+    # -----------------------------------------------------
+    # 4. Add actual motion-outlier / scrubbing metrics
+    # -----------------------------------------------------
+    motion_outlier_df = build_motion_outlier_table(
+        subjects=qc_df["sub"].unique().tolist(),
+        run=RUN,
+    )
+
+    qc_df = qc_df.merge(
+        motion_outlier_df,
+        on="sub",
+        how="left",
+        validate="many_to_one",
+    )
+
+
+    # -----------------------------------------------------
+    # 5. Drop subjects explicitly excluded
+    #    from analysis
+    # -----------------------------------------------------
+    qc_df = qc_df[
+        ~qc_df["sub"].isin(
+            subs_to_drop
+        )
+    ].copy()
+
+    qc_df = (
+        qc_df
+        .sort_values(
+            [
+                "sub",
+                "pipeline",
+            ]
+        )
+        .reset_index(
+            drop=True
+        )
+    )
+
+
+    # -----------------------------------------------------
+    # 6. Sanity checks
+    # -----------------------------------------------------
+    print(
+        "\n=== Final QC table ==="
+    )
+
+    print(
+        "Rows:",
+        len(qc_df),
+    )
+
+    print(
+        "Unique subjects:",
+        qc_df["sub"].nunique(),
+    )
+
+    print(
+        "\nRows per pipeline:"
+    )
+
+    print(
+        qc_df[
+            "pipeline"
+        ].value_counts()
+    )
+
+    print(
+        "\nFirst subjects:"
+    )
+
+    print(
+        sorted(
+            qc_df[
+                "sub"
+            ].unique()
+        )[:20]
+    )
+
+    print(
+        "\nMissing groups:"
+    )
+
+    print(
+        qc_df.loc[
+            qc_df[
+                "group"
+            ].isna(),
+            "sub",
+        ].unique()
+    )
+
+    print(
+        "\nMissing reportvals:"
+    )
+
+    print(
+        qc_df.loc[
+            qc_df[
+                "fd_mean_halfpipe"
+            ].isna(),
+            "sub",
+        ].unique()
+    )
+
+    print(
+        "\nMissing motion-outlier metrics:"
+    )
+
+    print(
+        qc_df.loc[
+            qc_df[
+                "n_motion_outliers"
+            ].isna(),
+            "sub",
+        ].unique()
+    )
+
+
+    # -----------------------------------------------------
+    # 7. Scrubbing summary
+    # -----------------------------------------------------
+    subject_motion_df = (
+        qc_df[
+            [
+                "sub",
+                "n_volumes",
+                "n_motion_outliers",
+                "motion_outlier_perc",
+                "n_fd_outliers",
+                "n_dvars_outliers",
+                "n_fd_only_outliers",
+                "n_dvars_only_outliers",
+                "n_fd_and_dvars_outliers",
+            ]
+        ]
+        .drop_duplicates(
+            subset="sub"
+        )
+    )
+
+    print(
+        "\n=== Motion-outlier summary ==="
+    )
+
+    print(
+        subject_motion_df[
+            [
+                "n_motion_outliers",
+                "motion_outlier_perc",
+                "n_fd_outliers",
+                "n_dvars_outliers",
+                "n_fd_only_outliers",
+                "n_dvars_only_outliers",
+                "n_fd_and_dvars_outliers",
+            ]
+        ].describe()
+    )
+
+
+    # -----------------------------------------------------
+    # 8. Compare HALFpipe fd_perc with actual
+    #    motion-outlier percentage
+    # -----------------------------------------------------
+    comparison_df = (
+        qc_df[
+            [
+                "sub",
+                "fd_perc_halfpipe",
+                "motion_outlier_perc",
+            ]
+        ]
+        .drop_duplicates(
+            subset="sub"
+        )
+        .dropna()
+    )
+
+    if not comparison_df.empty:
+        print(
+            "\n=== fd_perc vs actual motion-outlier % ==="
+        )
+
+        print(
+            comparison_df[
+                [
+                    "fd_perc_halfpipe",
+                    "motion_outlier_perc",
+                ]
+            ].corr()
+        )
+
+
+    # -----------------------------------------------------
+    # 9. Save
+    # -----------------------------------------------------
+    out_dir = (
+        Path.cwd()
+        / "outputs"
+    )
+
+    out_dir.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    out_path = (
+        out_dir
+        / "qc_table.csv"
+    )
+
+    qc_df.to_csv(
+        out_path,
+        index=False,
+    )
+
+    print(
+        "\nSaved:",
+        out_path,
+    )
+
 
 if __name__ == "__main__":
     main()

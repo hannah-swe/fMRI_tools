@@ -3,4 +3,4 @@ pipeline_patterns = {
     "scrub": "setting-imageScrubSetting",
 }
 
-palette = {"no_scrub": "mediumblue", "scrub": "deeppink"}
+palette = {"no_scrub": "deepskyblue", "scrub": "mediumblue"}

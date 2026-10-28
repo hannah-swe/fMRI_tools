@@ -1,286 +1,480 @@
 from __future__ import annotations
+
 from pathlib import Path
-import pandas as pd
+
 import matplotlib.pyplot as plt
+import pandas as pd
 import seaborn as sns
-from scipy.stats import pearsonr, ttest_rel
-import statsmodels.formula.api as smf
-from pppd.config.paths import fmriprep_dir
+from scipy.stats import ttest_rel
+
 from pppd.config.pipelines import palette
-from pppd.io.halfpipe import find_confounds_timeseries
 
 
-# CONFIG:
-FEATURE = "falff"  # "falff" oder "seedfc"
-RUN = "run-01"
-FD_THRESHOLD = 0.5
+# =========================================================
+# CONFIG
+# =========================================================
 
-DO_GENERAL = True   # allgemeine QC plots (feature-unabhängig)
-DO_FEATURE = True   # QC–Outcome plots (feature-spezifisch)
+FEATURE = "falff"   # "falff" oder "seedfc"
 
-QC_TABLE = Path.cwd() / "outputs" / "qc_table.csv"
-FEATURE_TABLE = Path.cwd() / "outputs" / f"qc_{FEATURE}_table.csv"
+FEATURE_TABLE = (
+    Path.cwd()
+    / "outputs"
+    / f"qc_{FEATURE}_table.csv"
+)
 
-OUT_DIR_GENERAL = Path.cwd() / "outputs" / "plots" / "general"
-OUT_DIR_FEATURE = Path.cwd() / "outputs" / "plots" / FEATURE
-OUT_DIR_GENERAL.mkdir(parents=True, exist_ok=True)
-OUT_DIR_FEATURE.mkdir(parents=True, exist_ok=True)
+OUT_DIR = (
+    Path.cwd()
+    / "outputs"
+    / "plots"
+    / FEATURE
+)
 
-# Plot styles
-sns.set_context("talk")
+OUT_DIR.mkdir(
+    parents=True,
+    exist_ok=True,
+)
+
+
+# Plot style
 sns.set_style("ticks")
-
-# -----------------------------
-# Helpers: FD-over-TR (only show, don't save)
-# -----------------------------
-def plot_fd_over_tr(confounds_tsv: Path, sub: str, fd_threshold: float | None = None) -> None:
-    conf = pd.read_csv(confounds_tsv, sep="\t")
-    fd = conf["framewise_displacement"].fillna(0)
-
-    plt.figure(figsize=(4, 4))
-    plt.plot(fd.values, linewidth=0.8, color="mediumblue")
-    plt.xlabel("TR")
-    plt.ylabel("Framewise Displacement")
-    plt.title(f"{sub} {RUN}".strip())
-    sns.despine()
-
-    if fd_threshold is not None:
-        plt.axhline(fd_threshold, color="black", linestyle="--", linewidth=1)
-
-    ymax = max(1, float(fd.max()))
-    plt.ylim(0, ymax)
-    plt.tight_layout()
-    plt.show()
-
-def run_fd_over_tr_plots() -> None:
-    for sub_dir in sorted(fmriprep_dir.glob("sub-*")):
-        sub = sub_dir.name
-        confounds_tsv = find_confounds_timeseries(sub_dir=sub_dir, sub=sub, run=RUN)
-        if confounds_tsv is None:
-            continue
-        plot_fd_over_tr(confounds_tsv, sub=sub, fd_threshold=FD_THRESHOLD)
+sns.set_context()
 
 
 # =========================================================
-# GENERAL QC PLOTS (feature-independent)
-# Uses: outputs/qc_table.csv
+# HELPERS
 # =========================================================
-if DO_GENERAL:
-    if not QC_TABLE.exists():
-        raise FileNotFoundError(f"QC table not found: {QC_TABLE} (run build_qc_table.py)")
 
-    qc = pd.read_csv(QC_TABLE)
-    print("\n[GENERAL] Loaded:", QC_TABLE)
-    print("[GENERAL] Rows:", len(qc), "| Unique subs:", qc["sub"].nunique())
+def p_to_stars(p: float) -> str:
+    if p < 0.001:
+        return "***"
+    if p < 0.01:
+        return "**"
+    if p < 0.05:
+        return "*"
+    return "n.s."
 
-    # Plot 1: FD over TR
-    run_fd_over_tr_plots()
 
-    # Plot 2: % scrubbed volumes on mean FD
-    plot_df = qc.loc[qc["pipeline"] == "scrub", ["sub", "fd_mean_halfpipe", "pct_scrub"]]
-    plt.figure(figsize=(8, 7))
-    sns.regplot( data=plot_df, x="fd_mean_halfpipe", y="pct_scrub", color="black")
-    plt.xlabel("Mean FD")
-    plt.ylabel("% scrubbed volumes")
-    sns.despine()
-    plt.tight_layout()
-    plt.savefig(OUT_DIR_GENERAL / "scrubbed_volumes_on_mean_fd.png", dpi=400)
-    plt.show()
+def add_sig_bracket(
+    ax,
+    x1: float,
+    x2: float,
+    y: float,
+    h: float,
+    text: str,
+) -> None:
+    ax.plot(
+        [x1, x1, x2, x2],
+        [y, y + h, y + h, y],
+        lw=1.5,
+        color="black",
+    )
 
-    # Plot 3: Mean FD across pipelines
-    plt.figure(figsize=(7, 7))
+    ax.text(
+        (x1 + x2) / 2,
+        y + h,
+        text,
+        ha="center",
+        va="bottom",
+        color="black",
+    )
+
+
+def get_ylabel(feature: str) -> str:
+    if feature == "falff":
+        return "Mean fALFF in DMN"
+
+    if feature == "seedfc":
+        return "Mean Seed FC in DMN"
+
+    return feature
+
+
+def get_difference_ylabel(feature: str) -> str:
+    if feature == "falff":
+        return "Δ fALFF (scrub − no scrub)"
+
+    if feature == "seedfc":
+        return "Δ Seed FC (scrub − no scrub)"
+
+    return "Difference (scrub − no scrub)"
+
+
+# =========================================================
+# MAIN
+# =========================================================
+
+def main() -> None:
+
+    # -----------------------------------------------------
+    # 1. Load feature table
+    # -----------------------------------------------------
+    if not FEATURE_TABLE.exists():
+        raise FileNotFoundError(
+            f"Feature table not found: {FEATURE_TABLE}"
+        )
+
+    df = pd.read_csv(
+        FEATURE_TABLE
+    )
+
+    print(
+        "\nLoaded:",
+        FEATURE_TABLE,
+    )
+
+    print(
+        "Rows:",
+        len(df),
+    )
+
+    print(
+        "Unique subjects:",
+        df["sub"].nunique(),
+    )
+
+
+    # -----------------------------------------------------
+    # 2. Select common DMN outcome
+    # -----------------------------------------------------
+    outcome_col = (
+        f"{FEATURE}_dmn_mean"
+    )
+
+    if outcome_col not in df.columns:
+        raise KeyError(
+            f"Missing expected column: {outcome_col}"
+        )
+
+
+    # -----------------------------------------------------
+    # 3. Create paired dataset
+    # -----------------------------------------------------
+    wide = (
+        df.pivot(
+            index="sub",
+            columns="pipeline",
+            values=outcome_col,
+        )
+        .dropna(
+            subset=[
+                "no_scrub",
+                "scrub",
+            ]
+        )
+        .copy()
+    )
+
+    if len(wide) < 3:
+        raise RuntimeError(
+            "Too few paired subjects for "
+            f"statistical test: n={len(wide)}"
+        )
+
+    wide["difference"] = (
+        wide["scrub"]
+        - wide["no_scrub"]
+    )
+
+    print(
+        "\nPaired subjects:",
+        len(wide),
+    )
+
+    print(
+        "\n=== Difference scores ==="
+    )
+
+    print(
+        f"Mean difference = "
+        f"{wide['difference'].mean():.6f}"
+    )
+
+    print(
+        f"SD difference   = "
+        f"{wide['difference'].std():.6f}"
+    )
+
+    print(
+        f"Min difference  = "
+        f"{wide['difference'].min():.6f}"
+    )
+
+    print(
+        f"Max difference  = "
+        f"{wide['difference'].max():.6f}"
+    )
+
+
+    # -----------------------------------------------------
+    # 4. Paired t-test
+    # -----------------------------------------------------
+    t_stat, p_value = ttest_rel(
+        wide["scrub"],
+        wide["no_scrub"],
+    )
+
+    stars = p_to_stars(
+        p_value
+    )
+
+    print(
+        "\n=== Paired t-test ==="
+    )
+
+    print(
+        f"Feature: {FEATURE}"
+    )
+
+    print(
+        f"Outcome: {outcome_col}"
+    )
+
+    print(
+        f"n = {len(wide)}"
+    )
+
+    print(
+        f"t = {t_stat:.3f}"
+    )
+
+    print(
+        f"p = {p_value:.6g}"
+    )
+
+
+    # -----------------------------------------------------
+    # 5. Keep paired subjects for plotting
+    # -----------------------------------------------------
+    paired_subjects = (
+        wide.index
+    )
+
+    plot_df = df[
+        df["sub"].isin(
+            paired_subjects
+        )
+    ].copy()
+
+    pipeline_order = [
+        "no_scrub",
+        "scrub",
+    ]
+
+
+    # -----------------------------------------------------
+    # 6. Boxplot + paired subject lines
+    # -----------------------------------------------------
+    fig, ax = plt.subplots(
+        figsize=(2.5, 4)
+    )
+
     sns.boxplot(
-        data=qc,
+        data=plot_df,
         x="pipeline",
-        y="fd_mean_halfpipe",
-        palette=palette,
+        y=outcome_col,
+        order=pipeline_order,
         hue="pipeline",
+        palette=palette,
         dodge=False,
         linewidth=1.5,
         linecolor="black",
-        showcaps=False,
+        showfliers=False,
+        fill=True,
+        legend=False,
+        ax=ax,
     )
+
     sns.lineplot(
-        data=qc,
+        data=plot_df,
         x="pipeline",
-        y="fd_mean_halfpipe",
+        y=outcome_col,
         units="sub",
         estimator=None,
+        sort=False,
         legend=False,
         color="black",
+        linewidth=1,
+        alpha=0.25,
+        ax=ax,
+    )
+
+
+    # -----------------------------------------------------
+    # 7. Significance bracket
+    # -----------------------------------------------------
+    y_max = (
+        plot_df[outcome_col]
+        .max()
+    )
+
+    y_min = (
+        plot_df[outcome_col]
+        .min()
+    )
+
+    y_range = (
+        y_max - y_min
+    )
+
+    if y_range == 0:
+        y_range = 1
+
+    bracket_y = (
+        y_max
+        + 0.05 * y_range
+    )
+
+    bracket_h = (
+        0.02 * y_range
+    )
+
+    add_sig_bracket(
+        ax=ax,
+        x1=0,
+        x2=1,
+        y=bracket_y,
+        h=bracket_h,
+        text=stars,
+    )
+
+
+    # -----------------------------------------------------
+    # 8. Labels
+    # -----------------------------------------------------
+    sns.despine(
+        ax=ax
+    )
+
+    ax.set_xlabel("")
+    ax.set_ylabel(
+        get_ylabel(FEATURE)
+    )
+
+    # Avoid set_xticklabels warning
+    ax.set_xticks(
+        [0, 1]
+    )
+
+    ax.set_xticklabels(
+        [
+            "No Scrub",
+            "Scrub",
+        ]
+    )
+
+    current_ylim = (
+        ax.get_ylim()
+    )
+
+    ax.set_ylim(
+        current_ylim[0],
+        max(
+            current_ylim[1],
+            bracket_y
+            + 0.08 * y_range,
+        ),
+    )
+
+    fig.tight_layout()
+
+    out_path = (
+        OUT_DIR
+        / f"{FEATURE}_dmn_scrub_vs_no_scrub.svg"
+    )
+
+    fig.savefig(
+        out_path,
+        bbox_inches="tight",
+        transparent=True,
+    )
+
+    plt.show()
+
+    print(
+        "\nSaved plot:",
+        out_path,
+    )
+
+
+    # -----------------------------------------------------
+    # 9. Difference plot
+    # -----------------------------------------------------
+    diff_df = (
+        wide
+        .reset_index()[
+            [
+                "sub",
+                "difference",
+            ]
+        ]
+    )
+
+    fig, ax = plt.subplots(
+        figsize=(1.75, 4)
+    )
+
+    sns.boxplot(
+        data=diff_df,
+        y="difference",
         linewidth=1.5,
-        alpha=0.4
-    )
-    sns.despine()
-    plt.tight_layout()
-    plt.xlabel("")
-    plt.ylabel("Mean Framewise Displacement")
-    plt.savefig(OUT_DIR_GENERAL / "mean_fd_on_pipelines.png", dpi=400)
-    plt.show()
-
-    # Plot 4: Remaining TRs
-    plt.figure(figsize=(7, 7))
-    sns.lineplot( data=qc, x="pipeline", y="remaining_tr", hue="sub", legend=False)
-    sns.despine()
-    plt.xlabel("")
-    plt.ylabel("Remaining TRs")
-    plt.tight_layout()
-    plt.savefig(OUT_DIR_GENERAL / "remaining_tr_on_pipelines.png", dpi=400)
-    plt.show()
-
-    print("\n[GENERAL] Plots saved to:", OUT_DIR_GENERAL)
-
-
-# =========================================================
-# FEATURE-SPECIFIC PLOTS (QC–Outcome)
-# Uses: outputs/qc_{FEATURE}_table.csv
-# =========================================================
-if DO_FEATURE:
-    if not FEATURE_TABLE.exists():
-        raise FileNotFoundError(
-            f"Feature table not found: {FEATURE_TABLE} "
-            f"(run build_feature_table.py for FEATURE='{FEATURE}')"
-        )
-
-    df = pd.read_csv(FEATURE_TABLE)
-
-    print("\n[FEATURE] Loaded:", FEATURE_TABLE)
-    print("[FEATURE] Rows:", len(df), "| Unique subs:", df["sub"].nunique())
-
-    # Collect outcomes: DMN + all ROI mean columns for this feature
-    outcome_cols = [f"{FEATURE}_dmn_mean"]
-    roi_cols = [c for c in df.columns if c.startswith(f"{FEATURE}_roi_")]
-    outcome_cols += roi_cols
-
-    missing = [c for c in outcome_cols if c not in df.columns]
-    if missing:
-        raise KeyError(f"Missing expected outcome columns: {missing}")
-
-    print("[FEATURE] Outcomes to plot:", outcome_cols)
-
-
-    def p_to_stars(p: float) -> str:
-        if p < 0.001:
-            return "***"
-        if p < 0.01:
-            return "**"
-        if p < 0.05:
-            return "*"
-        return "n.s."
-
-
-    def add_sig_bracket(ax, x1: float, x2: float, y: float, h: float, text: str):
-        """
-        Draw significance bracket between x1 and x2 at height y (data coords).
-        h is the bracket height (data coords).
-        """
-        ax.plot([x1, x1, x2, x2], [y, y + h, y + h, y], lw=1.5, c="black")
-        ax.text((x1 + x2) / 2, y + h, text, ha="center", va="bottom", color="black")
-
-
-    # Helper to run the same set of plots for one outcome column
-    def qc_outcome_plots(outcome_col: str, out_prefix: str) -> None:
-        # correlations (bleibt wie gehabt)
-        print(f"\n=== QC–Outcome: {outcome_col} ===")
-        for pipeline in ["no_scrub", "scrub"]:
-            dfp = df.query("pipeline == @pipeline").dropna(subset=[outcome_col, "fd_mean_halfpipe"])
-            if len(dfp) < 3:
-                print(f"{pipeline}: too few rows after NA drop")
-                continue
-            r, p = pearsonr(dfp["fd_mean_halfpipe"], dfp[outcome_col])
-            print(f"{pipeline}: r = {r:.3f}, p = {p:.3g}, n = {len(dfp)}")
-
-        # ---- NEW: paired t-test scrub vs no_scrub ----
-        wide = (df.pivot(index="sub", columns="pipeline", values=outcome_col).
-                dropna(subset=["no_scrub", "scrub"]).copy())
-        if len(wide) < 3:
-            print(f"Paired t-test: too few paired subjects for {outcome_col} (n={len(wide)})")
-            p_t = float("nan")
-            stars = "n/a"
-        else:
-            t_stat, p_t = ttest_rel(wide["scrub"], wide["no_scrub"])
-            stars = p_to_stars(p_t)
-            print(f"Paired t-test (scrub vs no_scrub): t = {t_stat:.3f}, p = {p_t:.3g}, n = {len(wide)}")
-
-        # Plot 1: FD vs outcome per pipeline (bleibt)
-        plt.figure(figsize=(12, 7))
-        g = sns.lmplot(
-            data=df,
-            x="fd_mean_halfpipe",
-            y=outcome_col,
-            col="pipeline",
-            hue="pipeline",
-            ci=95,
-            legend=False,
-            palette=palette,
-            height=7,
-            aspect=1
-        )
-        g.set_axis_labels("Mean Framewise Displacement", outcome_col)
-        plt.tight_layout()
-        plt.savefig(OUT_DIR_FEATURE / f"{out_prefix}_on_mean_fd.png", dpi=400)
-        plt.show()
-
-        # Plot 2: Outcome across pipelines: boxplot + paired lines + significance stars
-        plt.figure(figsize=(7, 7))
-        ax = sns.boxplot(
-            data=df,
-            x="pipeline",
-            y=outcome_col,
-            palette=palette,
-            hue="pipeline",
-            dodge=False,
-            linecolor="black",
-            linewidth=1.5,
-            showcaps=False,
-        )
-        sns.lineplot(
-            data=df,
-            x="pipeline",
-            y=outcome_col,
-            units="sub",
-            estimator=None,
-            legend=False,
-            color="black",
-            linewidth=1.5,
-            alpha=0.4
-        )
-
-        # ---- NEW: add stars to boxplot ----
-        # bracket from category 0 (no_scrub) to 1 (scrub)
-        y_max = df[outcome_col].max()
-        y_min = df[outcome_col].min()
-        y_range = (y_max - y_min) if pd.notna(y_max) and pd.notna(y_min) else 1.0
-
-        y = y_max + 0.05 * y_range
-        h = 0.02 * y_range
-        if pd.notna(p_t):
-            add_sig_bracket(ax, 0, 1, y=y, h=h, text=stars)
-
-        sns.despine()
-        plt.tight_layout()
-        plt.xlabel("")
-        plt.ylabel(outcome_col)
-
-        # optional: p-value in filename (wenn du willst)
-        plt.savefig(OUT_DIR_FEATURE / f"{out_prefix}_on_pipelines.png", dpi=400)
-        plt.show()
-
-
-    # Run for DMN
-    qc_outcome_plots(
-        outcome_col=f"{FEATURE}_dmn_mean",
-        out_prefix=f"{FEATURE}_dmn"
+        color="darkblue",
+        showfliers=False,
+        fill=False,
+        ax=ax,
     )
 
-    # Run for each ROI
-    for c in roi_cols:
-        # shorter file name prefix
-        roi_name = c.replace(f"{FEATURE}_roi_", "")
-        qc_outcome_plots(
-            outcome_col=c,
-            out_prefix=f"{FEATURE}_roi_{roi_name}"
+    sns.stripplot(
+        data=diff_df,
+        y="difference",
+        color="darkblue",
+        jitter=True,
+        alpha=0.6,
+        size=6,
+        ax=ax,
+    )
+
+    ax.axhline(
+        0,
+        color="grey",
+        linewidth=1.5,
+        alpha=0.5,
+    )
+
+    sns.despine(
+        ax=ax
+    )
+
+    ax.set_xlabel("")
+
+    ax.set_ylabel(
+        get_difference_ylabel(
+            FEATURE
         )
+    )
 
-    print("\n[FEATURE] Plots saved to:", OUT_DIR_FEATURE)
+    fig.tight_layout()
 
+    diff_out_path = (
+        OUT_DIR
+        / (
+            f"{FEATURE}_dmn_"
+            "difference_scrub_minus_no_scrub.svg"
+        )
+    )
+
+    fig.savefig(
+        diff_out_path,
+        bbox_inches="tight",
+        transparent=True,
+    )
+
+    plt.show()
+
+    print(
+        "Saved difference plot:",
+        diff_out_path,
+    )
+
+
+if __name__ == "__main__":
+    main()
