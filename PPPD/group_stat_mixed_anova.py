@@ -275,7 +275,6 @@ for seed in seeds:
     second_level_model = second_level_model.fit(diff_imgs, design_matrix=second_level_design)
     z_map = second_level_model.compute_contrast(effect, output_type='z_score')
 
-    # --- Significance test:
     # Version 1: abs(z) > 3.09 (equivalent to p < 0.001 one-sided test), cluster size > 10 voxels
     # z(threshold)=3.09 for p=0.001 when testing one-sided; 3.29 for two-sided
     thresholded_map1, z_threshold_p001 = threshold_stats_img(
@@ -384,15 +383,22 @@ for seed in seeds:
             verbose=1,
         )
 
+
     # --- Prepare non-parametric results
+    # t-statistic from the same non-parametric model
+    t_img = perm_out["t"]
+
+    # Save voxelwise t-value map
+    t_map_dir = os.path.join(stats_output_dir, "t_maps")
+    os.makedirs(t_map_dir, exist_ok=True)
+    t_map_path = os.path.join(t_map_dir, f"{file_suffix}_tmap.nii.gz")
+    t_img.to_filename(t_map_path)
+
     # corrected p < .05  <=>  -log10(p) > 1.30103
     neglog_alpha_05 = -np.log10(0.05)
 
     # cluster-mass FWER corrected significance map
     logp_img = perm_out["logp_max_mass"]
-
-    # t-statistic from the same non-parametric model
-    t_img = perm_out["t"]
 
     logp_data = logp_img.get_fdata()
     t_data = t_img.get_fdata()
@@ -556,16 +562,65 @@ for seed in seeds:
             perm_mask_dir = os.path.join(stats_output_dir, "tresh_cluster_masks")
             os.makedirs(perm_mask_dir, exist_ok=True)
 
+            # 1. Save original signed logp map
             signed_logp_mass_path = os.path.join(perm_mask_dir, f"{file_suffix}_signed_logp_clustermass_fwer05.nii.gz")
             signed_logp_mass_thr.to_filename(signed_logp_mass_path)
             print(f"Saved thresholded signed cluster-mass FWER map: {signed_logp_mass_path}")
+
+            # 2. Get thresholded signed logp data
+            signed_data = signed_logp_mass_thr.get_fdata()
+            # Calculate absolute values
+            abs_logp_data = np.abs(signed_data)
+
+            # 3. Save absolute logp map if negative values are present
+            # Save absolute image only if negative values are present
+            if np.any(signed_data < 0):
+                abs_logp_img = nib.Nifti1Image(
+                    abs_logp_data.astype(np.float32),
+                    affine=signed_logp_mass_thr.affine,
+                    header=signed_logp_mass_thr.header.copy()
+                )
+                abs_logp_path = os.path.join(perm_mask_dir, f"{file_suffix}_signed_abs_logp_clustermass_fwer05.nii.gz")
+                abs_logp_img.to_filename(abs_logp_path)
+                print(f"Saved absolute cluster-mass FWER map: {abs_logp_path}")
+            else:
+                print("No negative values found. Skipping additional absolute logp map.")
+
+
+            # --- Save individual significant clusters
+            if len(cluster_ids) > 1:
+                individual_cluster_dir = os.path.join(perm_mask_dir, "individual_clusters")
+                os.makedirs(individual_cluster_dir, exist_ok=True)
+
+                for cluster_id in cluster_ids:
+                    cluster_mask = label_data == cluster_id
+
+                    cluster_data = np.where(
+                        cluster_mask,
+                        abs_logp_data,
+                        0
+                    )
+
+                    cluster_img = nib.Nifti1Image(
+                        cluster_data.astype(np.float32),
+                        affine=signed_logp_mass_thr.affine,
+                        header=signed_logp_mass_thr.header.copy()
+                    )
+
+                    cluster_path = os.path.join(
+                        individual_cluster_dir,
+                        f"{file_suffix}_signed_abs_logp_clustermass_fwer05_cluster{int(cluster_id):02d}.nii.gz"
+                    )
+                    cluster_img.to_filename(cluster_path)
+                    print(f"Saved individual cluster {int(cluster_id)}: {cluster_path}")
+
+            else:
+                print("Only one significant cluster found. Skipping individual cluster images.")
 
 
             # --- Plot cluster-mass FWER corrected map with cluster-wise direction: 03_nonparametric
             nonparam_output_dir = os.path.join(stats_output_dir, "03_nonparametric")
             os.makedirs(nonparam_output_dir, exist_ok=True)
-
-            signed_data = signed_logp_mass_thr.get_fdata()
 
             vmin, vmax = get_colorbar_limits(
                 data=signed_data,
@@ -629,19 +684,9 @@ for seed in seeds:
             posthoc_mask_dir = os.path.join(stats_output_dir, "sig_cluster_masks")
             positive_dir = os.path.join(posthoc_mask_dir, "positive")
             negative_dir = os.path.join(posthoc_mask_dir, "negative")
-            signed_dir = os.path.join(posthoc_mask_dir, "signed")
 
             os.makedirs(positive_dir, exist_ok=True)
             os.makedirs(negative_dir, exist_ok=True)
-            os.makedirs(signed_dir, exist_ok=True)
-
-
-            # Save signed cluster-mass significance map
-            signed_logp_mass_path = os.path.join(
-                signed_dir,
-                f"{file_suffix}_{effect}_signed_logp_clustermass_fwer05.nii.gz",
-            )
-            signed_logp_mass_thr.to_filename(signed_logp_mass_path)
 
             # Save positive cluster-ID map
             if np.any(positive_cluster_ids > 0):
@@ -729,6 +774,10 @@ for seed in seeds:
         "negative_cluster_ids",
         "positive_cluster_img",
         "negative_cluster_img",
+        "abs_logp_data",
+        "abs_logp_img",
+        "cluster_data",
+        "cluster_img",
     ]:
         if name in globals():
             del globals()[name]
