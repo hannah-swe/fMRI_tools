@@ -8,7 +8,7 @@ outdir = Path(r"/data_wgs04/ag-sensomotorik/MRIcroGL/Resources/lut")
 
 
 # Originale RdBu-Colormap
-cmap = cm.get_cmap("RdBu_r")
+cmap = cm.get_cmap("Spectral_r")
 
 def save_clut(cmap, filename, n_nodes=21):
     with open(filename, "w") as f:
@@ -79,13 +79,13 @@ def save_monochrome_clut(rgb, filename, n_nodes=21):
 
 
 # RdBu scale (change cmap to get another matplotlib colormap)
-save_clut(cmap, outdir / "RdBu_r.clut")
+save_clut(cmap, outdir / "Spectral_r.clut")
 # blue half
 blue_half = lambda x: cmap(x * 0.5)
-save_clut(blue_half, outdir / "Bu.clut")
+save_clut(blue_half, outdir / "Spectral_blue.clut")
 # red half
 red_half = lambda x: cmap(0.5 + x * 0.5)
-save_clut(red_half, outdir / "Rd.clut")
+save_clut(red_half, outdir / "Spectral_red.clut")
 
 print("Bu.clut und Rd.clut gespeichert.")
 
