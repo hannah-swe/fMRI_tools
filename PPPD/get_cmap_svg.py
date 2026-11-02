@@ -71,3 +71,48 @@ cb.ax.tick_params(labelsize=10, length=4, width=0.8)
 cb.outline.set_linewidth(0.7)
 fig.savefig(outdir / "RdBu_colorbar.svg", bbox_inches="tight")
 plt.show()
+
+
+# --- Get split RdBu cmap
+vmin = 1.2
+vmax = 2.6
+
+# obere Skala: Blau aus RdBu_r > 0
+blue_cmap = mpl.cm.get_cmap("Spectral_r")
+blue_half = mpl.colors.LinearSegmentedColormap.from_list(
+    "blue_half",
+    blue_cmap(np.linspace(0.5, 1.0, 256))
+)
+
+# untere Skala: Rot aus RdBu > 0
+red_cmap = mpl.cm.get_cmap("Spectral")
+red_half = mpl.colors.LinearSegmentedColormap.from_list(
+    "red_half",
+    red_cmap(np.linspace(0.5, 1.0, 256))
+)
+
+fig, axes = plt.subplots(
+    nrows=2,
+    figsize=(3, 1.2),
+    constrained_layout=True
+)
+
+norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+ticks = [1.3, 1.7, 2.1, 2.5]
+
+for ax, cmap in zip(axes, [blue_half, red_half]):
+    cb = mpl.colorbar.ColorbarBase(
+        ax,
+        cmap=cmap,
+        norm=norm,
+        orientation="horizontal",
+        ticks=ticks
+    )
+    cb.ax.tick_params(labelsize=10, length=4, width=0.8)
+    cb.outline.set_linewidth(0.7)
+
+# als Vektorgrafik speichern
+fig.savefig(outdir / "Spectral_split_colorbars.svg", bbox_inches="tight")
+fig.savefig(outdir / "Spectral_split_colorbars.pdf", bbox_inches="tight")
+
+plt.show()
