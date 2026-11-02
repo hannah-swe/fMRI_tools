@@ -322,18 +322,64 @@ for seed in seeds:
 # Create one DataFrame containing all seeds
 connectivity_df = pd.DataFrame(all_rows)
 
+# Add cluster label
+connectivity_df["cluster_label"] = (
+    connectivity_df["seed"] + "_cluster-" + connectivity_df["cluster"].astype(str)
+)
+
+
+# --- Create connectivity dataframe in wide format
+connectivity_wide_df = connectivity_df.pivot(
+    index=["subject_id", "group", "part", "run"],
+    columns=["seed", "cluster"],
+    values="mean"
+).reset_index()
+
+# Flatten multi-index column names
+connectivity_wide_df.columns = [
+    col[0] if col[0] in ["subject_id", "group", "part", "run"]
+    else f"{col[0]}_cluster-{col[1]}"
+    for col in connectivity_wide_df.columns
+]
+
 
 # --- Get dataframe with difference values
 diff_df = (connectivity_df.pivot(index=["seed", "cluster", "subject_id", "group", "part", "aal_label", "n_voxels",
                                         "peak_stat", "p_value"], columns="run", values="mean").reset_index())
 diff_df["post_minus_pre"] = diff_df["post"] - diff_df["pre"]
 
+# Add cluster label
+diff_df["cluster_label"] = (
+    diff_df["seed"] + "_cluster-" + diff_df["cluster"].astype(str)
+)
 
-# --- Save both dataframes
-filename_connectivity = f"connectivity_dataframe_cluster_for_effect_{effect}.csv"
-connectivity_df.to_csv(os.path.join(output_dir, filename_connectivity), index=False)
-print("saved connectivity df.")
 
-filename_difference = f"difference_dataframe_cluster_for_effect_{effect}.csv"
-diff_df.to_csv(os.path.join(output_dir, filename_difference), index=False)
-print("saved difference df.")
+# --- Create difference dataframe in wide format
+diff_wide_df = diff_df.pivot(
+    index=["subject_id", "group", "part"],
+    columns=["seed", "cluster"],
+    values="post_minus_pre"
+).reset_index()
+
+# Flatten multi-index column names
+diff_wide_df.columns = [
+    col[0] if col[0] in ["subject_id", "group", "part"]
+    else f"{col[0]}_cluster-{col[1]}"
+    for col in diff_wide_df.columns
+]
+
+
+# --- Save all dataframes
+filename_connectivity_long = f"connectivity_dataframe_cluster_for_effect_{effect}_long.csv"
+connectivity_df.to_csv(os.path.join(output_dir, filename_connectivity_long), index=False)
+
+filename_connectivity_wide = f"connectivity_dataframe_cluster_for_effect_{effect}_wide.csv"
+connectivity_wide_df.to_csv(os.path.join(output_dir, filename_connectivity_wide), index=False)
+print("Saved connectivity df long and wide.")
+
+filename_difference_long = f"difference_dataframe_cluster_for_effect_{effect}_long.csv"
+diff_df.to_csv(os.path.join(output_dir, filename_difference_long), index=False)
+
+filename_difference_wide = f"difference_dataframe_cluster_for_effect_{effect}_wide.csv"
+diff_wide_df.to_csv(os.path.join(output_dir, filename_difference_wide), index=False)
+print("Saved difference df long and wide.")
